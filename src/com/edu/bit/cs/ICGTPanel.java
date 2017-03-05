@@ -9,8 +9,7 @@ import org.apache.spark.mllib.linalg.Vector;
 
 public class ICGTPanel extends JPanel
 {
-	List<Vector> _data;
-	List<Integer> _lable;
+	List<Sample> _sample;
 	Map<Integer,Color> _tabColor;
 
 	private int margin = 20;
@@ -33,29 +32,24 @@ public class ICGTPanel extends JPanel
 	{
 		super.paintComponent(g);
 
-		Random rand =new Random(25);
-
-		Iterator itData = _data.iterator();
-		Iterator itLable = _lable.iterator();
-		while(itData.hasNext())
+		Iterator itSample = _sample.iterator();
+		while(itSample.hasNext())
 		{
-			Vector data = (Vector)itData.next();
-			Integer lable = (Integer)itLable.next();
-			if(! _tabColor.containsKey(lable))
+			Sample sample = (Sample)itSample.next();
+			if(! _tabColor.containsKey(sample.getLabel()))
 			{
-				_tabColor.put(lable,new Color((int)(Math.random()*256),(int)(Math.random()*256),(int)(Math.random()*256)));
+				_tabColor.put( sample.getLabel(), new Color((int)(Math.random()*256),(int)(Math.random()*256),(int)(Math.random()*256)) );
 
 			}
-			g.setColor(_tabColor.get(lable));
-			Point point = coordTransform(data.apply(0), data.apply(1));
+			g.setColor(_tabColor.get( sample.getLabel() ));
+			Point point = coordTransform( sample.variable(0), sample.variable(1));
 			g.fillOval((int)point.getX(),(int)point.getY(), _lengthP, _lengthP);
 		}
 	}
 
-	public void displayClusters(List<Vector> data, List<Integer> lable)
+	public void displayClusters(List<Sample> sample)
 	{
-		_data = data;
-		_lable = lable;
+		_sample = sample;
 		_tabColor = new HashMap<Integer, Color>();
 
 		_minX = Double.MAX_VALUE;
@@ -63,9 +57,9 @@ public class ICGTPanel extends JPanel
 		_minY =  Double.MAX_VALUE ;
 		_maxY = 0;
 
-		for(Vector p : _data)
+		for(Sample p : _sample)
 		{
-			double x = p.apply(0), y = p.apply(1);
+			double x = p.variable(0), y = p.variable(1);
 			_minX = _minX < x ? _minX : x;
 			_maxX = _maxX > x ? _maxX : x;
 			_minY = _minY < y ? _minY : y;

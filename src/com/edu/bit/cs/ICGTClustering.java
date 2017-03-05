@@ -4,20 +4,21 @@ import java.util.*;
 import java.util.ArrayList;
 import java.util.LinkedList;
 import java.util.List;
+import java.util.Queue;
 import javax.swing.JFrame;
 
 import org.apache.spark.api.java.JavaRDD;
 import org.apache.spark.mllib.linalg.DenseVector;
 import org.apache.spark.mllib.linalg.Vector;
-import org.datanucleus.store.types.backed.*;
 
 public class ICGTClustering
 {
 	//树的根节点
 	private ICGTNode _nodeRoot;
 
+	private LinkedList<Sample> _queueSamples;
 	//树的全部叶子结点
-	private ArrayList<ICGTNode> _nodesLeaf;
+	private LinkedList<ICGTNode> _nodesLeaf;
 
 	//一些运算里用到的常量值
 	private static final double ZERO = 0.000001;
@@ -27,7 +28,8 @@ public class ICGTClustering
 
 	public ICGTClustering()
 	{
-		_nodesLeaf = new ArrayList<ICGTNode>();
+		_nodesLeaf = new LinkedList<ICGTNode>();
+		_queueSamples = new LinkedList<Sample>();
 		_nodeRoot = null;
 	}
 
@@ -39,32 +41,29 @@ public class ICGTClustering
 			return this;
 		}
 
-		//得到GMM模型
-		int k = ensureClusterNum(samples.count());
-		ICGTGaussianMixtureModel icgtGMM = MathUtil.getGMMByEM(samples, k);
-
-		insertGMMToTree(icgtGMM);
-		return this;
-	}
-
-	//将新得到的GMM插入ICGT树中并进行树的更新
-	private void insertGMMToTree(ICGTGaussianMixtureModel icgtGMM) throws Exception
-	{
-		//比较每个高斯模型与叶子结点的距离，如果大于阈值，就先建结点，否则插入到最小的距离的叶子结点里
-		for(int i = 0; i < icgtGMM.numOfGaussians() ; i++)
+		List<Vector> listSamples = samples.collect();
+		Iterator<Vector> it = listSamples.iterator();
+		while(it.hasNext())
 		{
-			System.out.println("numOfGaussians:" + i + " / "+ icgtGMM.numOfGaussians() );
+			Sample sample = new Sample(it.next());
+			_queueSamples.offer(sample);
+
+			GaussianMixtureModel gmmNew = new GaussianMixtureModel(new MultivariateGaussian(sample));
+
+			System.out.println("numOfGaussians:"+ gmmNew.numOfGaussians() );
 
 			//寻找最近叶子节点
 			double minDistance = Double.MAX_VALUE;
 			ICGTNode leafNearest = null;
-			for(int j = 0; j < _nodesLeaf.size() ; ++j)
+			Iterator<ICGTNode> itNode = _nodesLeaf.iterator();
+			while (itNode.hasNext())
 			{
-				double distance = MathUtil.eulcideanDistance( icgtGMM.gaussian(i), _nodesLeaf.get(j).getGMM().gaussian(0));
+				ICGTNode nodeTmp = itNode.next();
+				double distance = MathUtil.eulcideanDistance( gmmNew.gaussian(0), nodeTmp.getGMM().gaussian(0));
 				if(distance < minDistance)
 				{
 					minDistance = distance;
-					leafNearest = _nodesLeaf.get(j);
+					leafNearest = nodeTmp;
 				}
 			}
 
@@ -78,12 +77,10 @@ public class ICGTClustering
 				leafNew.initialize(ICGTNode.NODE_TYPE.LEAF);
 
 				//高斯模型对应于树结点的ID
-				leafNew.setGMM(icgtGMM);
-
+				leafNew.setGMM(gmmNew);
+				leafNew.addSample(sample);
 				_nodesLeaf.add(leafNew);
 				_nodeRoot.addChild(leafNew);
-
-				_nodeRoot.updateWeightOfChildren();
 				_nodeRoot.mergeGuassians();
 
 				//updateMuSigma(newLeaf);//更新树结点的均值和协方差矩阵
@@ -92,31 +89,29 @@ public class ICGTClustering
 			//小于阈值，则将信息导入
 			else if(minDistance < DISTANCE_THRESHOLD)
 			{
-				 leafNearest.insertGaussian(icgtGMM.gaussian(i), icgtGMM.numOfSamples(i));
-
-				 leafNearest.getNodeFather().updateWeightOfChildren();
-				 //updateMuSigma(minLeaf);//更新树结点的均值和协方差矩阵
+				leafNearest.setGMM(new GaussianMixtureModel(MathUtil.mergeGaussians(leafNearest.getGMM().gaussian(0),gmmNew.gaussian(0))));
+				leafNearest.addSample(sample);
+				_nodeRoot.mergeGuassians();
+				//updateMuSigma(minLeaf);//更新树结点的均值和协方差矩阵
 			}
 			//生成一个新的叶子结点
 			else
 			{
-				System.out.println("生成叶子节点开始:" );
 				ICGTNode leafNew = new ICGTNode();
 				leafNew.initialize(ICGTNode.NODE_TYPE.LEAF);
 
-				leafNew.setGMM(icgtGMM);
-				leafNew.addData(icgtGMM.gaussian(0).mu());
+				leafNew.setGMM(gmmNew);
+				leafNew.addSample(sample);
 
 				leafNearest.getNodeFather().addChild(leafNew);
 				_nodeRoot = leafNew.getNodeFather().update();
 				_nodesLeaf.add(leafNew);
-				System.out.println("生成叶子节点结束:" );
 				//updateMuSigma(newLeaf);//更新树结点的均值和协方差矩阵
 			}
-			System.out.println("_nodesLeaf.size():" + i + " / "+ _nodesLeaf.size());
-		}
-	}
 
+		}
+		return this;
+	}
 
 	//根据item的数目来确定k
 	private int ensureClusterNum(long num)
@@ -156,7 +151,7 @@ public class ICGTClustering
 			}
 
 			nodeIt = queueNodes.poll().getNodeChild();
-			if(nodeIt.isLeaf())
+			if(nodeIt == null || nodeIt.isLeaf())
 			{
 				break;
 			}
@@ -186,8 +181,8 @@ public class ICGTClustering
 			//簇内距离
 			ICGTNode iNode = iIt.next();
 			double temp = calculateIQ(iNode);
-			IQ += temp;
-
+			double tmp = IQ + temp;
+            IQ = tmp;
 			//簇间距离
 			Iterator<ICGTNode> jIt = clusters.iterator();
 			while(jIt.hasNext() && !jIt.next().equals(iNode));
@@ -206,21 +201,20 @@ public class ICGTClustering
 	 ****************************************************************************/
 	private double calculateIQ(ICGTNode node)
 	{
-		System.out.println("clusteringQuality");
-		ArrayList<ICGTNode> children = node.getChildren();
+		ArrayList<ICGTNode> children = node.getNodesChildren();
 
 		double max = ZERO;
-		for (int i = 0; i < children.size(); ++i)
+        int num =  children.size() - 1;
+        for (int i = 0; i < num - 1; ++i)
 		{
 			double min = Double.MAX_VALUE;
-			for (int j = i + 1; j < children.size(); ++j)
+			for (int j = i + 1; j < num; ++j)
 			{
 				double temp = MathUtil.GQFDistance(children.get(i).getGMM(), children.get(j).getGMM());
 				min = temp < min ? temp : min;
 			}
 			max = min > max ? min : max;
 		}
-
 		return max;
 	}
 
@@ -232,63 +226,34 @@ public class ICGTClustering
 	 ****************************************************************************/
 	private double calculateEQ(ICGTNode nodeA, ICGTNode nodB)
 	{
-		System.out.println("calculateEQ");
 		return MathUtil.GQFDistance(nodeA.getGMM(), nodB.getGMM());
 	}
 
-	//通过修改showResults可以修改聚类策略和显示形式
-	public void showResults(JavaRDD<Vector> samples)
-	{
-		List<Integer> listLable = _nodeRoot.predict(samples);
-		if(listLable == null){
-			listLable = new ArrayList<>();
-		}
-		int i = 0;
-		for(Integer label: listLable)
-		{
-			System.out.println("（）----->" + label);
-		};
-		/*
-		for(int i = 0; i < _nodesLeaf.size(); ++i)
-		{
-			System.out.println("第"+i+"个叶子的均值为"+_nodesLeaf..gaussians()[0].mu());
-			System.out.println("第"+i+"个叶子的协方差矩阵为"+_nodesLeaf.get(i).gmm.gaussians()[0].sigma());
-		}*/
-
-		final JFrame frame = new JFrame("Point Data Rendering");
-		ICGTPanel panel = new ICGTPanel();
-		panel.displayClusters(samples.collect(),listLable);
-		frame.setContentPane(panel);
-		frame.pack();
-		frame.setVisible(true);
-		frame.repaint();
-		frame.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
-	}
-
-	public void getClusteredSamples(LinkedList<Vector> listSamples, LinkedList<Integer> listLable,ICGTNode node, int label)
+	public void getClusteredSamples(LinkedList<Sample> listSamples, ICGTNode node, int label)
 	{
 		if(node.isLeaf())
 		{
-			Iterator it = node.getData().iterator();
+			Iterator it = node.getSample().iterator();
 			while(it.hasNext())
 			{
-				listSamples.offer((Vector) it.next());
-				listLable.offer(label);
+                Sample sample = (Sample) it.next();
+                sample.setLabel(label);
+				listSamples.offer(sample);
 			}
+			return ;
 		}
 
 		ICGTNode children = node.getNodeChild();
 		while(children != null)
 		{
-			getClusteredSamples(listSamples, listLable, node, label);
+			getClusteredSamples(listSamples, children, label);
 			children = children.getNodeBrotherNext();
 		}
 	}
 
 	public void showResults()
 	{
-		LinkedList<Vector> listSamples = new LinkedList<Vector>();
-		LinkedList<Integer> listLable = new LinkedList<Integer>();
+		LinkedList<Sample> listSamples = new LinkedList<Sample>();
 
 		LinkedList clusters = this.getBestCluster();
 
@@ -296,12 +261,12 @@ public class ICGTClustering
 		int label = 0;
 		while(iIt.hasNext())
 		{
-			getClusteredSamples(listSamples,listLable,iIt.next(),label++);
+			getClusteredSamples(listSamples, iIt.next(), label++);
 		}
 
 		final JFrame frame = new JFrame("Point Data Rendering");
 		ICGTPanel panel = new ICGTPanel();
-		panel.displayClusters(listSamples,listLable);
+		panel.displayClusters(listSamples);
 		frame.setContentPane(panel);
 		frame.pack();
 		frame.setVisible(true);

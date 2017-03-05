@@ -2,31 +2,64 @@ package com.edu.bit.cs;
 
 import org.apache.spark.api.java.JavaRDD;
 import org.apache.spark.mllib.linalg.Vector;
-import org.apache.spark.mllib.stat.distribution.MultivariateGaussian;
 
 public class MathUtil
 {
 	//一些运算里用到的常量值
 	private static final double ZERO = 0.000001;
 
-	//通过EM算法得到GMM
+/*
 	public static ICGTGaussianMixtureModel getGMMByEM(JavaRDD<Vector> samples, int k)
 	{
 		return new ICGTGaussianMixtureModel(samples, k);
+	}*/
+
+
+	//合并两个高斯模型
+	public static MultivariateGaussian mergeGaussians(MultivariateGaussian gaussianA ,MultivariateGaussian gaussianB)
+	{
+		int dimension = gaussianA.dimension();
+		long numOfSamplesA = gaussianA.numOfSamples();
+		long numOfSamplesB = gaussianB.numOfSamples();
+		long numOfSamples = numOfSamplesA + numOfSamplesB;
+		double[] meanA = gaussianA.mean();
+		double[] covA = gaussianA.cov();
+		double[] meanB = gaussianB.mean();
+		double[] covB = gaussianB.cov();
+		double[] meanMerged = new double[dimension];
+		double[] covMerged = new double[dimension];
+
+
+		//获得新的均值和协方差矩阵
+		//u = ((node).u *(node).num + (gau).u * (gau).num)/((node).num+(gau).num)
+		for (int i = 0; i < dimension; ++i)
+		{
+
+			meanMerged[i] = meanA[i] * numOfSamplesA / (numOfSamplesA + numOfSamplesB) + meanB[i] * numOfSamplesB / (numOfSamplesA + numOfSamplesB);
+
+			double tmp = meanB[i] -  meanA[i];
+
+			covMerged[i] = (numOfSamplesA - 1) * covA[i] / (numOfSamples - 1)
+					+ (numOfSamplesB - 1) * covB[i] / (numOfSamples - 1)
+					+ numOfSamplesA * numOfSamplesB * tmp * tmp / (numOfSamples * (numOfSamples - 1));
+		}
+
+		return new MultivariateGaussian(meanMerged, covMerged, numOfSamples);
 	}
 
+	/*
 	//合并两个高斯混合模型为一个高斯混合模型
-	public static ICGTGaussianMixtureModel mergeGMM(ICGTGaussianMixtureModel icgtGMMA,ICGTGaussianMixtureModel icgtGMMB) throws Exception
+	public static GaussianMixtureModel mergeGMM(GaussianMixtureModel gmmA,GaussianMixtureModel gmmB) throws Exception
 	{
-		if(icgtGMMA == null || icgtGMMB == null)
+		if(gmmA == null || gmmB == null)
 		{
 			throw new Exception("ICGTGaussianMixtureModel is null");
 		}
-		int numOfGassiansA = icgtGMMA.numOfGaussians();
-		int numOfGassiansB = icgtGMMB.numOfGaussians();
+		int numOfGassiansA = gmmA.numOfGaussians();
+		int numOfGassiansB = gmmB.numOfGaussians();
 		int numOfGaussians = numOfGassiansA + numOfGassiansB;
-		long numOfSamplesA = icgtGMMA.numOfSamples();
-		long numOfSamplesB = icgtGMMB.numOfSamples();
+		long numOfSamplesA = gmmA.numOfSamples();
+		long numOfSamplesB = gmmB.numOfSamples();
 		long numOfSamples = numOfSamplesA + numOfSamplesB;
 		double weights[] = new double[numOfGaussians];
 		MultivariateGaussian[] gaussians = new MultivariateGaussian[numOfGaussians];
@@ -35,20 +68,20 @@ public class MathUtil
 			long numOfSamplesTmp;
 			if(i < numOfGassiansA)
 			{
-				numOfSamplesTmp = (long)((double)numOfSamplesA * icgtGMMA.weight(i) + 0.5);
-				gaussians[i] = new MultivariateGaussian(icgtGMMA.gaussian(i).mu(),icgtGMMA.gaussian(i).sigma());
+				gaussians[i] = new MultivariateGaussian(gmmA.gaussian(i).mu(),gmmA.gaussian(i).sigma());
 				weights[i] = (double)numOfSamplesTmp / (double)numOfSamples;
 			}
 			else
 			{
-				numOfSamplesTmp = (long)((double)numOfSamplesB * icgtGMMB.weight(i-numOfGassiansA) + 0.5);
-				gaussians[i] = new MultivariateGaussian(icgtGMMB.gaussian(i-numOfGassiansA).mu(),icgtGMMB.gaussian(i-numOfGassiansA).sigma());
+				numOfSamplesTmp = (long)((double)numOfSamplesB * gmmB.weight(i-numOfGassiansA) + 0.5);
+				gaussians[i] = new MultivariateGaussian(gmmB.gaussian(i-numOfGassiansA).mu(),gmmB.gaussian(i-numOfGassiansA).sigma());
 				weights[i] = (double)numOfSamplesTmp / (double)numOfSamples;
 			}
 		}
 
-		return new ICGTGaussianMixtureModel(weights,gaussians,numOfSamples);
+		return new GaussianMixtureModel(weights,gaussians,numOfSamples);
 	}
+	*/
 /*
 	public static  double[] calculateMu(long sum,double[] arrMu,ICGTNode node)
 	{
@@ -137,23 +170,26 @@ public class MathUtil
 	public static double KLDivergenceDistance (MultivariateGaussian gaussianA,MultivariateGaussian gaussianB)
 	{
 		double result = 0;
-		int dimension = gaussianA.mu().size();
-
+		int dimension = gaussianA.dimension();
+		double[] meanA = gaussianA.mean();
+		double[] covA = gaussianA.cov();
+		double[] meanB = gaussianB.mean();
+		double[] covB = gaussianB.cov();
 		for (int i = 0; i < dimension; i++)
 		{
 			//原来代码为协方差，java中为协方差矩阵
-			if (gaussianB.sigma().apply(i, i) == 0)
+			if (covB[i] == 0)
 			{
-				gaussianB.sigma().update(i, i, ZERO);
+				covB[i] = ZERO;
 			}
-			if (gaussianA.sigma().apply(i, i) == 0)
+			if (covA[i] == 0)
 			{
-				result += gaussianA.sigma().apply(i, i) / gaussianB.sigma().apply(i, i) + Math.pow((gaussianA.mu().apply(i) - gaussianB.mu().apply(i)), 2.0) / gaussianB.sigma().apply(i, i);
+				result += covA[i] / covB[i]+ Math.pow((meanA[i] - meanB[i]), 2.0) / covB[i];
 			}
 			else
 			{
-				result += gaussianA.sigma().apply(i, i) / gaussianB.sigma().apply(i, i) + Math.pow((gaussianA.mu().apply(i) - gaussianB.mu().apply(i)), 2.0) / gaussianB.sigma().apply(i, i)
-						- Math.log(Math.abs(gaussianA.sigma().apply(i, i) / gaussianB.sigma().apply(i, i)));
+				result += covA[i] / covB[i] + Math.pow((meanA[i] - meanB[i]), 2.0) / covB[i]
+						- Math.log(Math.abs(covA[i] / covB[i]));
 			}
 		}
 		result -= dimension;
@@ -164,7 +200,7 @@ public class MathUtil
 
 
 	//计算两个高斯混合模型的距离
-	public static  double GQFDistance(ICGTGaussianMixtureModel icgtGMMA,ICGTGaussianMixtureModel icgtGMMB)
+	public static  double GQFDistance(GaussianMixtureModel icgtGMMA,GaussianMixtureModel icgtGMMB)
 	{
 		int numOfGassiansA = icgtGMMA.numOfGaussians();
 		int numOfGassiansB = icgtGMMB.numOfGaussians();
@@ -177,8 +213,8 @@ public class MathUtil
 		MultivariateGaussian[] gaussians = new MultivariateGaussian[numOfGaussians];
 		System.arraycopy(icgtGMMA.gaussians(), 0, gaussians, 0, numOfGassiansA);
 		System.arraycopy(icgtGMMB.gaussians(), 0,gaussians, numOfGassiansA, numOfGassiansB);
-		double[][] A = new double[800][800];
 
+		double[][] A = new double[numOfGaussians][numOfGaussians];
 		for (int i = 0; i < numOfGaussians; i++)
 		{
 			for (int j = 0; j < numOfGaussians; j++)
@@ -187,27 +223,17 @@ public class MathUtil
 			}
 		}
 
-		double result1[] = new double[800];
 		double result = 0;
-		for(int i = 0 ; i < 800 ;++i){
-			result1[i] = 0;
-		}
+
 		for (int i = 0; i < numOfGaussians; ++i)
 		{
 			for (int j = 0; j < numOfGaussians; ++j)
 			{
-				result1[i] += weights[j] * A[j][i];
+				result += weights[j] * A[j][i] * weights[i];
 			}
 		}
+		result = result < 0 ? 0 : result;
 
-		for (int i = 0; i < numOfGaussians; ++i)
-		{
-			result += result1[i] * weights[i];
-		}
-		if (result < 0)
-		{
-			result = 0;
-		}
 		return Math.sqrt(result);
 	}
 
@@ -215,10 +241,12 @@ public class MathUtil
 	public static  double eulcideanDistance(MultivariateGaussian gaussianA,MultivariateGaussian gaussianB)
 	{
 		double distance = 0;
-		int dimension = gaussianA.mu().size();
+		int dimension = gaussianA.dimension();
+		double[] meanA = gaussianA.mean();
+		double[] meanB = gaussianB.mean();
 		for (int i = 0; i < dimension ; ++i)
 		{
-			double temp = gaussianA.mu().apply(i) - gaussianB.mu().apply(i);
+			double temp = meanA[i] - meanB[i];
 			distance += temp * temp;
 		}
 		distance = Math.sqrt(distance); //欧氏距离

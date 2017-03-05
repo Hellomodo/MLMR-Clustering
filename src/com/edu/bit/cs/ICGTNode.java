@@ -2,7 +2,6 @@ package com.edu.bit.cs;
 
 import org.apache.spark.api.java.JavaRDD;
 import org.apache.spark.mllib.linalg.*;
-import org.apache.spark.mllib.stat.distribution.MultivariateGaussian;
 
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -14,37 +13,35 @@ public class ICGTNode {
 	public static enum NODE_TYPE {ROOT, LEAF, OTHER}
 
 	private static final double ZERO = 0.000001;
-	private static final double G_CONNECT_THRESHOLD = 5;
-	private static final int DISTANCE_THRESHOLD = 5;
-	private static final double GMM_CONNECT_THRESHOLD = 5;
+	private static final double G_CONNECT_THRESHOLD = 3.7;
+	private static final int DISTANCE_THRESHOLD = 0;
+	private static final double GMM_CONNECT_THRESHOLD = 2;
 
 	private NODE_TYPE _nodeType;    //判断给节点是否为叶子结点
 
-	private ICGTGaussianMixtureModel _icgtGMM;
+	private GaussianMixtureModel _gmm;
 
 	private ICGTNode _nodeFather = null;
 	private ICGTNode _nodeChild = null;
 	private ICGTNode _nodeBrotherPre = null;
 	private ICGTNode _nodeBrotherNext = null;
 
-	private LinkedList<Vector> _dataList;
-
-	private double _weight = 1;
+	private LinkedList<Sample> _samples;
 
 	public ICGTNode()
 	{
-		_icgtGMM = null;
-		_dataList = new LinkedList<Vector>();
+		_gmm = null;
+		_samples = new LinkedList<Sample>();
 	}
 
-	public ICGTNode(ICGTGaussianMixtureModel icgtGMM) {
-		_icgtGMM = icgtGMM;
+	public ICGTNode(GaussianMixtureModel gmm) {
+		_gmm = gmm;
 	}
 
 	public void initialize(NODE_TYPE nodeType) {
 		_nodeType = nodeType;
 		if (_nodeType == NODE_TYPE.LEAF) {
-			_icgtGMM = null;
+			_gmm = null;
 		}
 		_nodeFather = null;
 		_nodeChild = null;
@@ -52,20 +49,12 @@ public class ICGTNode {
 		_nodeBrotherNext = null;
 	}
 
-	public void addData(Vector data) {
-		_dataList.offer(data);
-	}
-
-	public LinkedList<Vector> getData() {
-		return _dataList;
-	}
-
 	public boolean isLeaf() {
 		return _nodeType == NODE_TYPE.LEAF;
 	}
 
 	public long numOfSamples() {
-		return _icgtGMM.numOfSamples();
+		return _gmm.numOfSamples();
 	}
 
 	public int numOfChild() {
@@ -78,25 +67,12 @@ public class ICGTNode {
 		return count;
 	}
 
-	public void addChild(ICGTNode node) {
-		node.setNodeFather(this);
-		ICGTNode tmp = _nodeChild;
-		_nodeChild = node;
-		node.setNodeBrotherNext(tmp);
-		if (null != tmp) {
-			tmp.setNodeBrotherPre(node);
-		}
-	}
-
 	//更新节点参数，当新生成一个节点时，调用此方法对相关父辈节点进行参数更新
 	public ICGTNode update() throws Exception {
-		System.out.println("updateWeightOfChildren:" );
-		updateWeightOfChildren();
-		System.out.println("mergeGuassians:" );
-		mergeGuassians();
-		System.out.println("nodeSplit:" );
+
+		this.mergeGuassians();
 		this.nodeSplit();
-		System.out.println("return:" );
+
 		if (this._nodeType == NODE_TYPE.ROOT) {
 			return this;
 		} else {
@@ -109,33 +85,30 @@ public class ICGTNode {
 	{
 		if (_nodeChild == null)
 			return;
-		ICGTGaussianMixtureModel rslt = _nodeChild.getGMM();
 
-		ICGTNode nodeIt = _nodeChild.getNodeBrotherNext();
-		while (nodeIt != null)
+		int numOfGaussiansSum = 0;
+		ICGTNode itNode = _nodeChild;
+		while (itNode != null)
 		{
-			rslt = MathUtil.mergeGMM(rslt, nodeIt.getGMM());
-			nodeIt = nodeIt.getNodeBrotherNext();
+			numOfGaussiansSum += itNode.getGMM().numOfGaussians();
+			itNode = itNode.getNodeBrotherNext();
 		}
-		_icgtGMM = rslt;
+		MultivariateGaussian[] gaussians = new MultivariateGaussian[numOfGaussiansSum];
+
+		itNode = _nodeChild;
+		int count = 0;
+		while (itNode != null)					  //保存各高斯成分参数
+		{
+			int numOfGaussians = itNode.getGMM().numOfGaussians();
+			for (int i = 0; i < numOfGaussians; ++i)
+			{
+				gaussians[count++] = itNode.getGMM().gaussian(i);
+			}
+			itNode = itNode._nodeBrotherNext;
+		}
+		_gmm = new GaussianMixtureModel(gaussians);
 	}
 
-	//修改结点node的权重信息
-	public void updateWeightOfChildren() {
-		if (_nodeType == NODE_TYPE.LEAF)
-			return;
-		int numOfSamples = 0;
-		ICGTNode nodeIt = _nodeChild;
-		while (nodeIt != null) {
-			numOfSamples += nodeIt.numOfSamples();
-			nodeIt = nodeIt.getNodeBrotherNext();
-		}
-		nodeIt = _nodeChild;
-		while (nodeIt != null) {
-			nodeIt.setWeight((double) (nodeIt.numOfSamples()) / numOfSamples);
-			nodeIt = nodeIt.getNodeBrotherNext();
-		}
-	}
 
 	public void nodeSeperate() {
 		if (_nodeType == NODE_TYPE.ROOT)
@@ -252,7 +225,6 @@ public class ICGTNode {
 					}
 
 				}
-				newNode.updateWeightOfChildren();
 				newNode.mergeGuassians();
 			}
 		}
@@ -261,34 +233,6 @@ public class ICGTNode {
 		return true;
 	}
 
-	//将单个高斯模型插入树的叶子结点里
-	public void insertGaussian(MultivariateGaussian gaussian, long numOfSamplesArg) throws Exception {
-		int dimension = gaussian.mu().size();
-		long numOfSamplesThis = this.numOfSamples();
-		long numOfSamples = numOfSamplesArg + numOfSamplesThis;
-		Vector vecMuThis = _icgtGMM.gaussian(0).mu();
-		Matrix matSigmaThis = _icgtGMM.gaussian(0).sigma();
-		Vector vecMuArg = gaussian.mu();
-		Matrix matSigmaArg = gaussian.sigma();
-		double[] muRslt = new double[dimension];
-		double[] sigmaRslt = new double[dimension];
-
-
-		//获得新的均值和协方差矩阵
-		//u = ((node).u *(node).num + (gau).u * (gau).num)/((node).num+(gau).num)
-		for (int i = 0; i < dimension; ++i) {
-
-			muRslt[i] = vecMuThis.apply(i) * numOfSamplesThis / (numOfSamplesThis + numOfSamplesArg) + vecMuArg.apply(i) * numOfSamplesArg / (numOfSamplesThis + numOfSamplesArg);
-
-			double tmp = vecMuArg.apply(i) - vecMuThis.apply(i);
-
-			sigmaRslt[i] = (numOfSamplesThis - 1) * matSigmaThis.apply(i, i) / (numOfSamples - 1)
-					+ (numOfSamplesThis - 1) * matSigmaArg.apply(i, i) / (numOfSamples - 1)
-					+ numOfSamplesThis * numOfSamplesArg * tmp * tmp / (numOfSamples * (numOfSamples - 1));
-		}
-
-		_icgtGMM = new ICGTGaussianMixtureModel(new MultivariateGaussian(new DenseVector(muRslt), DenseMatrix.diag(Vectors.dense(sigmaRslt))), numOfSamplesThis + numOfSamplesArg);
-	}
 /*
 	//更新树结点的均值和方差
 	private void updateMuAndSigma()
@@ -334,41 +278,44 @@ public class ICGTNode {
 	}
 */
 
-
-	public List<Integer> predict(JavaRDD<Vector> samples) {
-		return _icgtGMM.predict(samples);
+	public void addChild(ICGTNode node) {
+		node.setNodeFather(this);
+		ICGTNode tmp = _nodeChild;
+		_nodeChild = node;
+		node.setNodeBrotherNext(tmp);
+		if (null != tmp) {
+			tmp.setNodeBrotherPre(node);
+		}
 	}
 
-	public ArrayList<ICGTNode> getChildren()
+	public ArrayList<ICGTNode> getNodesChildren()
 	{
 		ArrayList<ICGTNode> children = new ArrayList<ICGTNode>();
 		ICGTNode nodeIt = _nodeChild;
 		while(nodeIt != null)
 		{
 			children.add(nodeIt);
-			nodeIt.getNodeBrotherNext();
+			nodeIt = nodeIt.getNodeBrotherNext();
 		}
 		return children;
 	}
 
-	public void setWeight(double weight)
-	{
-		_weight = weight;
+	public void addSample(Sample sample) {
+		_samples.offer(sample);
 	}
 
-	public double getWeight()
-	{
-		return _weight;
+	public LinkedList<Sample> getSample() {
+		return _samples;
 	}
 
-	public void setGMM(ICGTGaussianMixtureModel icgtGMM)
+	public void setGMM(GaussianMixtureModel gmm)
 	{
-		_icgtGMM = icgtGMM;
+		_gmm = gmm;
 	};
 
-	public ICGTGaussianMixtureModel getGMM()
+	public GaussianMixtureModel getGMM()
 	{
-		return _icgtGMM;
+		return _gmm;
 	};
 
 	public void setNodeFather(ICGTNode nodeFather)

@@ -44,7 +44,7 @@ public class Main{
         long end = System.currentTimeMillis();		// 记录结束时间
         System.out.println(end-start);				// 相减得出运行时间
         start = System.currentTimeMillis();	// 记录起始时间
-        clustering.getBestCluster();
+        clustering.showResults();
         end = System.currentTimeMillis();		// 记录结束时间
         System.out.println(end-start);				// 相减得出运行时间
         //通过修改showResults可以修改聚类策略和显示形式
