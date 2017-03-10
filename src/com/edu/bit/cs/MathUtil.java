@@ -47,104 +47,6 @@ public class MathUtil
 		return new MultivariateGaussian(meanMerged, covMerged, numOfSamples);
 	}
 
-	/*
-	//合并两个高斯混合模型为一个高斯混合模型
-	public static GaussianMixtureModel mergeGMM(GaussianMixtureModel gmmA,GaussianMixtureModel gmmB) throws Exception
-	{
-		if(gmmA == null || gmmB == null)
-		{
-			throw new Exception("ICGTGaussianMixtureModel is null");
-		}
-		int numOfGassiansA = gmmA.numOfGaussians();
-		int numOfGassiansB = gmmB.numOfGaussians();
-		int numOfGaussians = numOfGassiansA + numOfGassiansB;
-		long numOfSamplesA = gmmA.numOfSamples();
-		long numOfSamplesB = gmmB.numOfSamples();
-		long numOfSamples = numOfSamplesA + numOfSamplesB;
-		double weights[] = new double[numOfGaussians];
-		MultivariateGaussian[] gaussians = new MultivariateGaussian[numOfGaussians];
-		for(int i = 0; i < numOfGaussians; i++)
-		{
-			long numOfSamplesTmp;
-			if(i < numOfGassiansA)
-			{
-				gaussians[i] = new MultivariateGaussian(gmmA.gaussian(i).mu(),gmmA.gaussian(i).sigma());
-				weights[i] = (double)numOfSamplesTmp / (double)numOfSamples;
-			}
-			else
-			{
-				numOfSamplesTmp = (long)((double)numOfSamplesB * gmmB.weight(i-numOfGassiansA) + 0.5);
-				gaussians[i] = new MultivariateGaussian(gmmB.gaussian(i-numOfGassiansA).mu(),gmmB.gaussian(i-numOfGassiansA).sigma());
-				weights[i] = (double)numOfSamplesTmp / (double)numOfSamples;
-			}
-		}
-
-		return new GaussianMixtureModel(weights,gaussians,numOfSamples);
-	}
-	*/
-/*
-	public static  double[] calculateMu(long sum,double[] arrMu,ICGTNode node)
-	{
-		//判断是否为第一次计算均值
-		if(sum < 0)
-		{
-			try
-			{
-				throw new Exception("Sum can't be negtive!");
-			} catch (Exception e)
-			{
-				e.printStackTrace();
-			}
-			return null;
-		}
-		double[] res = new double[node.dimension];
-		if(sum == 0)
-		{
-			//如果是第一次计算，直接把结点的均值全部赋值过去就行
-			for(int i = 0; i < arrMu.length ; ++i)
-			{
-				res[i] = node.mu.apply(i);
-			}
-		}
-		else{
-			for(int i = 0; i < arrMu.length ; ++i)
-			{
-				res[i] = (double)(arrMu[i] * sum + node.mu.apply(i))/(double)(sum+node.dataNum);
-			}
-		}
-		return res;
-	}
-*/
-/*
-	public static  double[] calculateSigma(long sum,double[] arrSigma,ICGTNode node){
-		//判断是否为第一次计算均值
-		if(sum < 0){
-			try {
-				throw new Exception("Sum can't be negtive!");
-			} catch (Exception e) {
-				e.printStackTrace();
-			}
-			return null;
-		}
-		double[] res = new double[node.dimension*node.dimension];
-		if(sum == 0)
-		{
-			//如果是第一次计算，直接把结点的均值全部赋值过去就行
-			for(int i = 0; i < node.dimension ; ++i)
-			{
-				for(int j = 0; j < node.dimension ; ++j)
-				{
-					res[i*node.dimension+j] = node.sigma.apply(i,j);
-				}
-			}
-		}
-		else
-		{
-			//更新父节点均值和方差，但是公式还没推导出来
-		}
-		return res;
-	}
-*/
 	public static void warshall(boolean[][] mat)
 	{
 		int num = mat.length;
@@ -214,31 +116,22 @@ public class MathUtil
 		System.arraycopy(icgtGMMA.gaussians(), 0, gaussians, 0, numOfGassiansA);
 		System.arraycopy(icgtGMMB.gaussians(), 0,gaussians, numOfGassiansA, numOfGassiansB);
 
-		double[][] A = new double[numOfGaussians][numOfGaussians];
+		double result = 0;
 		for (int i = 0; i < numOfGaussians; i++)
 		{
 			for (int j = 0; j < numOfGaussians; j++)
 			{
-				A[i][j] = MathUtil.KLDivergenceDistance(gaussians[i], gaussians[j]);
+				double Aij = MathUtil.KLDivergenceDistance(gaussians[i], gaussians[j]);
+				result += weights[i] * Aij * weights[j];
 			}
 		}
 
-		double result = 0;
-
-		for (int i = 0; i < numOfGaussians; ++i)
-		{
-			for (int j = 0; j < numOfGaussians; ++j)
-			{
-				result += weights[j] * A[j][i] * weights[i];
-			}
-		}
 		result = result < 0 ? 0 : result;
-
 		return Math.sqrt(result);
 	}
 
 	//计算两个高斯模型的欧式距离距离
-	public static  double eulcideanDistance(MultivariateGaussian gaussianA,MultivariateGaussian gaussianB)
+	public static double eulcideanDistance(MultivariateGaussian gaussianA,MultivariateGaussian gaussianB)
 	{
 		double distance = 0;
 		int dimension = gaussianA.dimension();

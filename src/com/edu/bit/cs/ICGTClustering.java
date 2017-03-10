@@ -43,15 +43,17 @@ public class ICGTClustering
 
 		List<Vector> listSamples = samples.collect();
 		Iterator<Vector> it = listSamples.iterator();
+        long count = 0, sum = listSamples.size();
 		while(it.hasNext())
 		{
+            count ++;
+
 			Sample sample = new Sample(it.next());
 			_queueSamples.offer(sample);
 
 			GaussianMixtureModel gmmNew = new GaussianMixtureModel(new MultivariateGaussian(sample));
 
-			System.out.println("numOfGaussians:"+ gmmNew.numOfGaussians() );
-
+            System.out.println("寻找最近的叶子节点: "+ count + "/" + sum);
 			//寻找最近叶子节点
 			double minDistance = Double.MAX_VALUE;
 			ICGTNode leafNearest = null;
@@ -66,15 +68,13 @@ public class ICGTClustering
 					leafNearest = nodeTmp;
 				}
 			}
-
+            System.out.println("找到最近的叶子节点");
 			//说明是树的第一个结点
 			if(minDistance == Double.MAX_VALUE)
 			{
-				_nodeRoot = new ICGTNode();
-				_nodeRoot.initialize(ICGTNode.NODE_TYPE.ROOT);
+				_nodeRoot = new ICGTNode(ICGTNode.NODE_TYPE.ROOT);
 
-				ICGTNode leafNew = new ICGTNode();
-				leafNew.initialize(ICGTNode.NODE_TYPE.LEAF);
+				ICGTNode leafNew = new ICGTNode(ICGTNode.NODE_TYPE.LEAF);
 
 				//高斯模型对应于树结点的ID
 				leafNew.setGMM(gmmNew);
@@ -97,18 +97,17 @@ public class ICGTClustering
 			//生成一个新的叶子结点
 			else
 			{
-				ICGTNode leafNew = new ICGTNode();
-				leafNew.initialize(ICGTNode.NODE_TYPE.LEAF);
+				ICGTNode leafNew = new ICGTNode(ICGTNode.NODE_TYPE.LEAF);
 
 				leafNew.setGMM(gmmNew);
 				leafNew.addSample(sample);
 
 				leafNearest.getNodeFather().addChild(leafNew);
 				_nodeRoot = leafNew.getNodeFather().update();
-				_nodesLeaf.add(leafNew);
+ 				_nodesLeaf.add(leafNew);
 				//updateMuSigma(newLeaf);//更新树结点的均值和协方差矩阵
 			}
-
+            System.out.println("插入叶子节点");
 		}
 		return this;
 	}

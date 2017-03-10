@@ -2,6 +2,7 @@ package com.edu.bit.cs;
 
 import org.apache.spark.api.java.JavaRDD;
 import org.apache.spark.mllib.linalg.*;
+import scala.Array;
 
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -12,72 +13,63 @@ public class ICGTNode {
 
 	public static enum NODE_TYPE {ROOT, LEAF, OTHER}
 
-	private static final double ZERO = 0.000001;
-	private static final double G_CONNECT_THRESHOLD = 3.7;
-	private static final int DISTANCE_THRESHOLD = 0;
-	private static final double GMM_CONNECT_THRESHOLD = 2;
+	private double ZERO = 0.000001;
+	private double thresholdMG = 3.7;
+	private double thresholdGMM = 2;
 
+	private int _numOfChildren;
 	private NODE_TYPE _nodeType;    //判断给节点是否为叶子结点
 
 	private GaussianMixtureModel _gmm;
 
-	private ICGTNode _nodeFather = null;
-	private ICGTNode _nodeChild = null;
-	private ICGTNode _nodeBrotherPre = null;
-	private ICGTNode _nodeBrotherNext = null;
+	private boolean _isChanged;
+	private boolean _isClosure;
+
+	private ICGTNode _nodeFather;
+	private ICGTNode _nodeChild;
+	private ICGTNode _nodeBrotherPre;
+	private ICGTNode _nodeBrotherNext;
+
 
 	private LinkedList<Sample> _samples;
 
-	public ICGTNode()
+	public ICGTNode(NODE_TYPE nodeType)
 	{
-		_gmm = null;
-		_samples = new LinkedList<Sample>();
-	}
-
-	public ICGTNode(GaussianMixtureModel gmm) {
-		_gmm = gmm;
+		initialize(nodeType);
 	}
 
 	public void initialize(NODE_TYPE nodeType) {
 		_nodeType = nodeType;
-		if (_nodeType == NODE_TYPE.LEAF) {
-			_gmm = null;
-		}
 		_nodeFather = null;
 		_nodeChild = null;
 		_nodeBrotherPre = null;
 		_nodeBrotherNext = null;
-	}
+		_isChanged = true;
+		_numOfChildren = 0;
 
-	public boolean isLeaf() {
-		return _nodeType == NODE_TYPE.LEAF;
-	}
-
-	public long numOfSamples() {
-		return _gmm.numOfSamples();
-	}
-
-	public int numOfChild() {
-		ICGTNode nodeIt = _nodeChild;
-		int count = 0;
-		while (nodeIt != null) {
-			count++;
-			nodeIt = nodeIt.getNodeBrotherNext();
+		if (_nodeType == NODE_TYPE.LEAF) {
+			_gmm = null;
+			_samples = new LinkedList<Sample>();
 		}
-		return count;
+		else{
+			_isClosure = false;
+		}
 	}
 
 	//更新节点参数，当新生成一个节点时，调用此方法对相关父辈节点进行参数更新
 	public ICGTNode update() throws Exception {
 
+		System.out.println("mergeGuassians");
 		this.mergeGuassians();
+		System.out.println("nodeSplit");
 		this.nodeSplit();
-
+		_isChanged = true;
 		if (this._nodeType == NODE_TYPE.ROOT) {
 			return this;
 		} else {
 			return _nodeFather.update();
 		}
+
 	}
 
 	//将某一非叶子节点下所有的高斯混合模型中的高斯成分合并成为该节点的高斯成分
@@ -115,7 +107,7 @@ public class ICGTNode {
 			return;
 
 		if (_nodeBrotherPre == null) {
-			this.getNodeFather().setNodeChild(this._nodeBrotherNext);
+			_nodeFather.setNodeChild(this._nodeBrotherNext);
 			if (_nodeBrotherNext != null) {
 				_nodeBrotherNext.setNodeBrotherPre(null);
 			}
@@ -125,158 +117,107 @@ public class ICGTNode {
 			_nodeBrotherPre.setNodeBrotherNext(_nodeBrotherNext);
 			_nodeBrotherNext.setNodeBrotherPre(_nodeBrotherPre);
 		}
+		_nodeFather._numOfChildren --;
 	}
-
 
 	//分裂相应的
 	public boolean nodeSplit() throws Exception {
-		int num = numOfChild();
+		int num = _numOfChildren;
 		if (num == 1)
 			return false;
 
-		boolean[][] matConn = new boolean[num][num];
-		boolean[] isVisit = new boolean[num];
+		ArrayList<Integer> indexChanged = new ArrayList<Integer>();
+
+
+		ICGTNode[] children = new ICGTNode[num];
+		UnionFindSet ufs = new UnionFindSet(num);
 
 		ICGTNode nodeIt = _nodeChild;
-		ICGTNode[] index = new ICGTNode[num];
+		int firstConstant = -1;
 		for (int i = 0; i < num; ++i) {
-			index[i] = nodeIt;
+			children[i] = nodeIt;
+			if(nodeIt.isChanged()) {
+				indexChanged.add(i);
+			}else if(_isClosure ) {
+				if(firstConstant == -1)
+					firstConstant = i;
+				else
+					ufs.union(i, firstConstant);
+			}
 			nodeIt = nodeIt.getNodeBrotherNext();
 		}
 
-		for (int i = 0; i < num; ++i)                           //构图
+		// 遍历，完整并查集,找出最大闭包
+		for(int j = 0; j < indexChanged.size() && indexChanged.get(j) != -1; j ++)
 		{
-			for (int j = i; j < num; ++j) {
-
-				if (index[i].isLeaf() == false)                          //叶子层利用欧式距离公式计算距离
-				{
-					double temp;
-					if (i != j) {
-						temp = MathUtil.GQFDistance(index[i].getGMM(), index[j].getGMM());
+			GaussianMixtureModel gmmChanged = children[indexChanged.get(j)].getGMM();
+			MultivariateGaussian gaussianChanged = children[indexChanged.get(j)].getGMM().gaussian(0);
+			for (int i = 0; i < num; ++i) {                          //构图
+				double temp;
+				if (children[i].isLeaf() == false) {                        //非叶子层利用GQFD公式计算距离
+					if (i != indexChanged.get(j)) {
+						temp = MathUtil.GQFDistance(children[i].getGMM(), gmmChanged);
 					} else {
-						temp = ZERO;
+						continue;
 					}
 
-					if (temp < GMM_CONNECT_THRESHOLD) {
-						matConn[i][j] = true;
-						matConn[j][i] = true;
+					if (temp < thresholdGMM) {
+						ufs.union(i,indexChanged.get(j));
 					}
-				} else                                        //非叶子层利用GQFD公式计算距离
-				{
-					double temp;
-					if (i != j) {
-						temp = MathUtil.eulcideanDistance(index[i].getGMM().gaussian(0), index[j].getGMM().gaussian(0));
+				} else{                                        //叶子层利用欧式距离公式计算距离
+
+					if (i != indexChanged.get(j)) {
+						temp = MathUtil.eulcideanDistance(children[i].getGMM().gaussian(0),gaussianChanged);
 					} else {
-						temp = ZERO;
+						continue;
 					}
 
-					if (temp < G_CONNECT_THRESHOLD) {
-						matConn[i][j] = true;
-						matConn[j][i] = true;
+					if (temp < thresholdMG) {
+						ufs.union(i,indexChanged.get(j));
 					}
 				}
 			}
 		}
 
-		MathUtil.warshall(matConn);
-
-		int mapAmount = 0;
-		for (int i = 0; i < num; ++i)                    //计算连通图的个数
-		{
-			if (!isVisit[i]) {
-				mapAmount++;
-				for (int j = 0; j < num; ++j) {
-					if (matConn[i][j]) {
-						isVisit[j] = true;
-					}
-				}
-			}
+		if (ufs.count() == num) {//当连通图的个数为1或者连通图的个数与节点个数相同时，不需要分裂
+			_isClosure = false;
+			return false;
 		}
-
-		if (mapAmount == num || mapAmount == 1) {//当连通图的个数为1或者连通图的个数与节点个数相同时，不需要分裂
+		else if(ufs.count() == 1){
+			_isClosure = true;
 			return false;
 		}
 
-		Arrays.fill(isVisit, false);
-
 		if (_nodeType == NODE_TYPE.ROOT)                //需要分裂且要分裂的节点为根节点时
 		{
-			ICGTNode newNode = new ICGTNode();
+			ICGTNode newNode = new ICGTNode(NODE_TYPE.ROOT);
 			_nodeType = NODE_TYPE.OTHER;
-			newNode.initialize(NODE_TYPE.ROOT);
 			newNode.addChild(this);
 		}
 
 		//此节点分支从当前树中分离
 		this.nodeSeperate();
 
-		//分裂节点，在同一个连通图内的节点分到同一个节点下
-		for (int i = 0; i < num; ++i) {
-			if (!isVisit[i]) {
-				ICGTNode newNode;
-				newNode = new ICGTNode();
-				newNode.initialize(NODE_TYPE.OTHER);
-				_nodeFather.addChild(newNode);
-				for (int j = 0; j < num; ++j) {
-					if (true == matConn[i][j]) {
-						isVisit[j] = true;
-						index[j].nodeSeperate();
-						newNode.addChild(index[j]);
-					}
+		ICGTNode[] nodes = new ICGTNode[ufs.count()];
 
-				}
-				newNode.mergeGuassians();
-			}
+		for (int i = 0; i < ufs.count(); ++i) {
+			nodes[i] =  new ICGTNode(NODE_TYPE.OTHER);
 		}
-		_nodeFather.update();
-		//updateMuSigma(nodeFather);//更新树结点的均值和协方差矩阵
+
+		//分裂节点
+		for (int i = 0; i < num; ++i) {
+			children[i].nodeSeperate();
+			nodes[ufs.find(i)].addChild(children[i]);
+		}
+
+		for (int i = 0; i < ufs.count(); ++i) {
+			nodes[i].isClosure(true);
+			_nodeFather.addChild(nodes[i]);
+			nodes[i].mergeGuassians();
+		}
+
 		return true;
 	}
-
-/*
-	//更新树结点的均值和方差
-	private void updateMuAndSigma()
-	{
-		int dimension = this.getGMM().dimension();
-		if(_nodeType == NODE_TYPE.LEAF)
-		{
-			//如果是叶子结点，直接将高斯模型的均值和方差作为结点的均值和方差
-			double[] array = new double[dimension*dimension];
-			for(int i = 0 ;i < node.dimension ;++i)
-			{
-				array[i] = node.gmm.gaussians()[0].mu().apply(i);
-			}
-			node.mu = new DenseVector(array);
-			for(int i = 0; i < node.dimension; ++i)
-			{
-				for(int j = 0; j < node.dimension; ++j)
-				{
-					array[i*node.dimension+j] = node.gmm.gaussians()[0].sigma().apply(i, j);
-				}
-			}
-			node.sigma = new DenseMatrix(node.dimension, node.dimension, array);
-			return;
-		}
-		else
-		{
-			//如果不是叶子结点，就利用论文中的均值和方差的计算公式计算新的均值和方差
-			GMMTreeNode iter = node.son;
-			double[] arrMu = new double[node.dimension];
-			double[] arrSigma = new double[node.dimension*node.dimension];
-			long sum = 0;
-			while(iter != null)
-			{
-				arrMu = calculateMu(sum,arrMu,iter);
-				arrSigma = calculateSigma(sum,arrSigma,iter);
-				sum += iter.dataNum;
-				iter = iter.next_bro;
-			}
-			node.mu = new DenseVector(arrMu);
-			node.sigma = new DenseMatrix(node.dimension, node.dimension, arrSigma);
-		}
-		updateMuSigma(node.father);
-	}
-*/
 
 	public void addChild(ICGTNode node) {
 		node.setNodeFather(this);
@@ -286,6 +227,7 @@ public class ICGTNode {
 		if (null != tmp) {
 			tmp.setNodeBrotherPre(node);
 		}
+		_numOfChildren ++;
 	}
 
 	public ArrayList<ICGTNode> getNodesChildren()
@@ -298,6 +240,41 @@ public class ICGTNode {
 			nodeIt = nodeIt.getNodeBrotherNext();
 		}
 		return children;
+	}
+
+	public long numOfSamples() {
+		return _gmm.numOfSamples();
+	}
+
+	public int numOfChild() {
+		ICGTNode nodeIt = _nodeChild;
+		int count = 0;
+		while (nodeIt != null) {
+			count++;
+			nodeIt = nodeIt.getNodeBrotherNext();
+		}
+		return count;
+	}
+
+
+	public boolean isChanged()
+	{
+		if(_isChanged) {
+			_isChanged = false;
+			return true;
+		}
+		else {
+			return false;
+		}
+	}
+
+	public boolean isLeaf() {
+		return _nodeType == NODE_TYPE.LEAF;
+	}
+
+	public void isClosure(boolean isClosure)
+	{
+		_isClosure = isClosure;
 	}
 
 	public void addSample(Sample sample) {

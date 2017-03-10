@@ -4,9 +4,6 @@ import java.awt.*;
 import java.util.*;
 import java.util.List;
 
-import org.apache.spark.mllib.linalg.Vector;
-
-
 public class ICGTPanel extends JPanel
 {
 	List<Sample> _sample;

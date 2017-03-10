@@ -16,13 +16,13 @@ public class Main{
     {
         String _urlMaster= "spark://10.108.6.128:7077";
         String _urlHDFS = "hdfs://10.108.6.128:9000/";
-        System.setProperty("hadoop.home.dir", "E:\\DeveloperRepository\\hadoop-2.7.3");
-        SparkConf  _sparkConf = new SparkConf().setAppName("GaussianMixture Example").setMaster(_urlMaster)
-                .setJars(new String[]{"E:\\DailyProject\\Java\\ICGTClustering\\out\\artifacts\\ICGTClustering_jar\\ICGTClustering.jar"});
+        System.setProperty("hadoop.home.dir", "D:\\ProjSoftware\\hadoop-2.7.3");
+        SparkConf  _sparkConf = new SparkConf().setAppName("GaussianMixture Example").setMaster("local")
+                .setJars(new String[]{"D:\\LsyTestProj\\ICGTClustering\\out\\artifacts\\ICGTClustering_jar\\ICGTClustering.jar"});
         JavaSparkContext _javaSparkContext = new JavaSparkContext(_sparkConf);
 
         // Load and parse data
-        String path = _urlHDFS+"ICGT_Samples/Jain1.txt";
+        String path = _urlHDFS + "ICGT_Samples/Jain1.txt";
         JavaRDD<String> data = _javaSparkContext.textFile(path);
         JavaRDD<Vector> parsedData = data.map(
                 new Function<String, Vector>()
@@ -37,6 +37,7 @@ public class Main{
                     }
                 }
         );
+
         parsedData.cache();
         ICGTClustering clustering = new ICGTClustering();
         long start = System.currentTimeMillis();	// 记录起始时间
