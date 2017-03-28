@@ -22,14 +22,14 @@ public class Main{
         JavaSparkContext _javaSparkContext = new JavaSparkContext(_sparkConf);
 
         // Load and parse data
-        String path = _urlHDFS + "ICGT_Samples/Jain1.txt";
+        String path = _urlHDFS + "ICGT_Samples/Jain2.txt";
         JavaRDD<String> data = _javaSparkContext.textFile(path);
         JavaRDD<Vector> parsedData = data.map(
                 new Function<String, Vector>()
                 {
                     public Vector call(String s)
                     {
-                        String[] sarray = s.trim().split("\t");
+                        String[] sarray = s.trim().split(" ");
                         double[] values = new double[sarray.length-1];
                         for (int i = 0; i < sarray.length-1; i++)
                             values[i] = Double.parseDouble(sarray[i]);

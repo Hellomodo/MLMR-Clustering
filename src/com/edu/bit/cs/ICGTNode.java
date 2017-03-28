@@ -63,6 +63,8 @@ public class ICGTNode {
 		this.mergeGuassians();
 		System.out.println("nodeSplit");
 		this.nodeSplit();
+		System.out.println("nodeBiSplit");
+		this.nodeBiSplit();
 		_isChanged = true;
 		if (this._nodeType == NODE_TYPE.ROOT) {
 			return this;
@@ -120,6 +122,40 @@ public class ICGTNode {
 		_nodeFather._numOfChildren --;
 	}
 
+	public boolean nodeBiSplit() throws Exception {
+		int num = _numOfChildren;
+		if (num < 200)
+			return false;
+
+		ICGTNode newNode = new ICGTNode(_nodeType);
+		if(_nodeType != NODE_TYPE.ROOT)
+		{
+			_nodeFather.addChild(newNode);
+		}
+
+		//此节点分支从当前树中分离
+		this.nodeSeperate();
+
+		ICGTNode[] nodes = new ICGTNode[2];
+		nodes[0] = new ICGTNode(NODE_TYPE.OTHER);
+		nodes[1] = new ICGTNode(NODE_TYPE.OTHER);
+		//分裂节点
+		ICGTNode nodeIt = _nodeChild;
+		for (int i = 0; i < num; ++i) {
+			ICGTNode tmp = nodeIt.getNodeBrotherNext();
+			nodeIt.nodeSeperate();
+			nodes[i/(num/2)].addChild(nodeIt);
+			nodeIt = tmp;
+		}
+		nodes[0].mergeGuassians();
+		nodes[0].isClosure(_isClosure);
+		nodes[1].mergeGuassians();
+		nodes[1].isClosure(_isClosure);
+		newNode.addChild(nodes[0]);
+		newNode.addChild(nodes[1]);
+		newNode.mergeGuassians();
+		return true;
+	}
 	//分裂相应的
 	public boolean nodeSplit() throws Exception {
 		int num = _numOfChildren;
