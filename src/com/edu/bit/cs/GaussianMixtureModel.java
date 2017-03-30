@@ -1,12 +1,13 @@
 package com.edu.bit.cs;
 
+import java.io.Serializable;
 import java.util.ArrayList;
 import java.util.List;
 
 import org.apache.spark.api.java.JavaRDD;
 import org.apache.spark.mllib.linalg.Vector;
 
-public class GaussianMixtureModel
+public class GaussianMixtureModel implements Serializable
 {
 
 	private MultivariateGaussian[] _gaussians;

@@ -69,7 +69,7 @@ public class MathUtil
 	}
 
 	//KL散度距离计算公式
-	public static double KLDivergenceDistance (MultivariateGaussian gaussianA,MultivariateGaussian gaussianB)
+	public static double KLDivergence (MultivariateGaussian gaussianA,MultivariateGaussian gaussianB)
 	{
 		double result = 0;
 		int dimension = gaussianA.dimension();
@@ -121,7 +121,7 @@ public class MathUtil
 		{
 			for (int j = 0; j < numOfGaussians; j++)
 			{
-				double Aij = MathUtil.KLDivergenceDistance(gaussians[i], gaussians[j]);
+				double Aij = MathUtil.KLDivergence(gaussians[i], gaussians[j]);
 				result += weights[i] * Aij * weights[j];
 			}
 		}

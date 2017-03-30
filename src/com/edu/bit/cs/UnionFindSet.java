@@ -42,6 +42,7 @@ class UnionFindSet
         }
         count--;
     }
+
     public int find(int p)
     {
          if (p != set[p])

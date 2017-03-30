@@ -23,7 +23,7 @@ public class ICGTClustering
 	//一些运算里用到的常量值
 	private static final double ZERO = 0.000001;
 	private static final double G_CONNECT_THRESHOLD = 3.7;
-	private static final int DISTANCE_THRESHOLD = 0;
+	private static final int DISTANCE_THRESHOLD = 2;
 	private static final double GMM_CONNECT_THRESHOLD = 2;
 
 	public ICGTClustering()
@@ -33,27 +33,54 @@ public class ICGTClustering
 		_nodeRoot = null;
 	}
 
-	//接受一个新的RDD，用于增量聚类（先把数据转化为gmm,然后再把每个高斯模型插入高斯混合模型树里，再进行树的更新）
-	public ICGTClustering run(JavaRDD<Vector> samples) throws Exception
+	public ICGTClustering(List<ICGTNode> listSubtrees)
 	{
-		if(samples.count() == 0)
+		_nodeRoot = new ICGTNode(ICGTNode.NODE_TYPE.ROOT);
+
+		_nodeRoot.threshold(5.85);
+		System.out.println("Final reclustering");
+		for(ICGTNode subtree : listSubtrees)
+		{
+			subtree.isChanged(true);
+			_nodeRoot.addChild(subtree);
+		}
+		_nodeRoot = _nodeRoot.update();
+	}
+
+	public List<ICGTNode> getFirstLayer()
+	{
+		ArrayList<ICGTNode> listNodes = new ArrayList<>();
+		ICGTNode nodeIt = _nodeRoot.getNodeChild();
+		while(nodeIt != null)
+		{
+			nodeIt.seperateFromParents();
+			listNodes.add(nodeIt);
+			nodeIt = nodeIt.getNodeBrotherNext();
+		}
+		System.out.println("num of listNodes" + listNodes.size());
+		return listNodes;
+	}
+
+
+	//接受一个新的RDD，用于增量聚类（先把数据转化为gmm,然后再把每个高斯模型插入高斯混合模型树里，再进行树的更新）
+	public ICGTClustering run(Iterator<Vector> samples)
+	{
+		if(samples == null)
 		{
 			return this;
 		}
 
-		List<Vector> listSamples = samples.collect();
-		Iterator<Vector> it = listSamples.iterator();
-        long count = 0, sum = listSamples.size();
-		while(it.hasNext())
+		long count = 0;
+		while(samples.hasNext())
 		{
             count ++;
 
-			Sample sample = new Sample(it.next());
+			Sample sample = new Sample(samples.next());
 			_queueSamples.offer(sample);
 
 			GaussianMixtureModel gmmNew = new GaussianMixtureModel(new MultivariateGaussian(sample));
 
-            System.out.println("寻找最近的叶子节点: "+ count + "/" + sum);
+            System.out.println("寻找最近的叶子节点: "+ count + "/" );
 			//寻找最近叶子节点
 			double minDistance = Double.MAX_VALUE;
 			ICGTNode leafNearest = null;
@@ -92,6 +119,7 @@ public class ICGTClustering
 				leafNearest.setGMM(new GaussianMixtureModel(MathUtil.mergeGaussians(leafNearest.getGMM().gaussian(0),gmmNew.gaussian(0))));
 				leafNearest.addSample(sample);
 				_nodeRoot.mergeGuassians();
+				_nodeRoot = leafNearest.getNodeFather().update();
 				//updateMuSigma(minLeaf);//更新树结点的均值和协方差矩阵
 			}
 			//生成一个新的叶子结点
@@ -164,7 +192,6 @@ public class ICGTClustering
 	}
 
 
-
 	/****************************************************************************
 	 countRation1:计算某种聚类结果的IQ\EQ
 	 输入：
@@ -176,7 +203,6 @@ public class ICGTClustering
 		Iterator<ICGTNode> iIt = clusters.iterator();
 		while(iIt.hasNext())
 		{
-			System.out.println("clusteringQuality");
 			//簇内距离
 			ICGTNode iNode = iIt.next();
 			double temp = calculateIQ(iNode);
@@ -254,9 +280,7 @@ public class ICGTClustering
 	{
 		LinkedList<Sample> listSamples = new LinkedList<Sample>();
 
-		LinkedList clusters = this.getBestCluster();
-
-		Iterator<ICGTNode> iIt = clusters.iterator();
+		Iterator<ICGTNode> iIt = this.getBestCluster().iterator();
 		int label = 0;
 		while(iIt.hasNext())
 		{

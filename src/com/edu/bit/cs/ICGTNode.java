@@ -1,21 +1,17 @@
 package com.edu.bit.cs;
 
-import org.apache.spark.api.java.JavaRDD;
-import org.apache.spark.mllib.linalg.*;
-import scala.Array;
 
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.LinkedList;
-import java.util.List;
+import java.io.Serializable;
+import java.util.*;
 
-public class ICGTNode {
+public class ICGTNode  implements Serializable {
 
 	public static enum NODE_TYPE {ROOT, LEAF, OTHER}
 
 	private double ZERO = 0.000001;
-	private double thresholdMG = 3.7;
-	private double thresholdGMM = 2;
+
+	private double thresholdMG = 6;
+	private double _thresholdGMM = 3;
 
 	private int _numOfChildren;
 	private NODE_TYPE _nodeType;    //判断给节点是否为叶子结点
@@ -30,6 +26,16 @@ public class ICGTNode {
 	private ICGTNode _nodeBrotherPre;
 	private ICGTNode _nodeBrotherNext;
 
+
+	public void threshold(double threshold)
+	{
+		_thresholdGMM = threshold;
+	}
+
+	public double threshold()
+	{
+		return _thresholdGMM;
+	}
 
 	private LinkedList<Sample> _samples;
 
@@ -46,9 +52,7 @@ public class ICGTNode {
 		_nodeBrotherNext = null;
 		_isChanged = true;
 		_numOfChildren = 0;
-
 		if (_nodeType == NODE_TYPE.LEAF) {
-			_gmm = null;
 			_samples = new LinkedList<Sample>();
 		}
 		else{
@@ -57,14 +61,11 @@ public class ICGTNode {
 	}
 
 	//更新节点参数，当新生成一个节点时，调用此方法对相关父辈节点进行参数更新
-	public ICGTNode update() throws Exception {
+	public ICGTNode update() {
 
-		System.out.println("mergeGuassians");
 		this.mergeGuassians();
-		System.out.println("nodeSplit");
 		this.nodeSplit();
-		System.out.println("nodeBiSplit");
-		this.nodeBiSplit();
+		//this.nodeBiSplit();
 		_isChanged = true;
 		if (this._nodeType == NODE_TYPE.ROOT) {
 			return this;
@@ -75,12 +76,13 @@ public class ICGTNode {
 	}
 
 	//将某一非叶子节点下所有的高斯混合模型中的高斯成分合并成为该节点的高斯成分
-	public void mergeGuassians() throws Exception
+	public void mergeGuassians()
 	{
 		if (_nodeChild == null)
 			return;
 
 		int numOfGaussiansSum = 0;
+
 		ICGTNode itNode = _nodeChild;
 		while (itNode != null)
 		{
@@ -103,8 +105,7 @@ public class ICGTNode {
 		_gmm = new GaussianMixtureModel(gaussians);
 	}
 
-
-	public void nodeSeperate() {
+	public void seperateFromParents() {
 		if (_nodeType == NODE_TYPE.ROOT)
 			return;
 
@@ -122,7 +123,7 @@ public class ICGTNode {
 		_nodeFather._numOfChildren --;
 	}
 
-	public boolean nodeBiSplit() throws Exception {
+	public boolean nodeBiSplit() {
 		int num = _numOfChildren;
 		if (num < 200)
 			return false;
@@ -134,7 +135,7 @@ public class ICGTNode {
 		}
 
 		//此节点分支从当前树中分离
-		this.nodeSeperate();
+		this.seperateFromParents();
 
 		ICGTNode[] nodes = new ICGTNode[2];
 		nodes[0] = new ICGTNode(NODE_TYPE.OTHER);
@@ -143,7 +144,7 @@ public class ICGTNode {
 		ICGTNode nodeIt = _nodeChild;
 		for (int i = 0; i < num; ++i) {
 			ICGTNode tmp = nodeIt.getNodeBrotherNext();
-			nodeIt.nodeSeperate();
+			nodeIt.seperateFromParents();
 			nodes[i/(num/2)].addChild(nodeIt);
 			nodeIt = tmp;
 		}
@@ -156,14 +157,14 @@ public class ICGTNode {
 		newNode.mergeGuassians();
 		return true;
 	}
+
 	//分裂相应的
-	public boolean nodeSplit() throws Exception {
+	public boolean nodeSplit() {
 		int num = _numOfChildren;
 		if (num == 1)
 			return false;
 
 		ArrayList<Integer> indexChanged = new ArrayList<Integer>();
-
 
 		ICGTNode[] children = new ICGTNode[num];
 		UnionFindSet ufs = new UnionFindSet(num);
@@ -190,17 +191,19 @@ public class ICGTNode {
 			MultivariateGaussian gaussianChanged = children[indexChanged.get(j)].getGMM().gaussian(0);
 			for (int i = 0; i < num; ++i) {                          //构图
 				double temp;
-				if (children[i].isLeaf() == false) {                        //非叶子层利用GQFD公式计算距离
+				//if (children[i].isLeaf() == false) {                        //非叶子层利用GQFD公式计算距离
 					if (i != indexChanged.get(j)) {
 						temp = MathUtil.GQFDistance(children[i].getGMM(), gmmChanged);
+						System.out.println("GQFDistance" + temp);
 					} else {
 						continue;
 					}
 
-					if (temp < thresholdGMM) {
+					if (temp < _thresholdGMM) {
 						ufs.union(i,indexChanged.get(j));
 					}
-				} else{                                        //叶子层利用欧式距离公式计算距离
+			//	}
+				/*else{                                        //叶子层利用欧式距离公式计算距离
 
 					if (i != indexChanged.get(j)) {
 						temp = MathUtil.eulcideanDistance(children[i].getGMM().gaussian(0),gaussianChanged);
@@ -211,11 +214,13 @@ public class ICGTNode {
 					if (temp < thresholdMG) {
 						ufs.union(i,indexChanged.get(j));
 					}
-				}
+				}*/
 			}
 		}
 
-		if (ufs.count() == num) {//当连通图的个数为1或者连通图的个数与节点个数相同时，不需要分裂
+		System.out.println("闭包数目"+ufs.count() );
+		//当连通图的个数为1或者连通图的个数与节点个数相同时，不需要分裂
+		if (ufs.count() == num) {
 			_isClosure = false;
 			return false;
 		}
@@ -224,7 +229,8 @@ public class ICGTNode {
 			return false;
 		}
 
-		if (_nodeType == NODE_TYPE.ROOT)                //需要分裂且要分裂的节点为根节点时
+		//需要分裂且要分裂的节点为根节点时
+		if (_nodeType == NODE_TYPE.ROOT)
 		{
 			ICGTNode newNode = new ICGTNode(NODE_TYPE.ROOT);
 			_nodeType = NODE_TYPE.OTHER;
@@ -232,30 +238,38 @@ public class ICGTNode {
 		}
 
 		//此节点分支从当前树中分离
-		this.nodeSeperate();
+		this.seperateFromParents();
 
-		ICGTNode[] nodes = new ICGTNode[ufs.count()];
+		Map<Integer,ICGTNode> mapNode = new HashMap<>();
 
-		for (int i = 0; i < ufs.count(); ++i) {
-			nodes[i] =  new ICGTNode(NODE_TYPE.OTHER);
-		}
-
-		//分裂节点
+		//新增结点，并包含各自闭包子节点
 		for (int i = 0; i < num; ++i) {
-			children[i].nodeSeperate();
-			nodes[ufs.find(i)].addChild(children[i]);
+			children[i].seperateFromParents();
+			if( mapNode.containsKey(ufs.find(i)) ){
+				mapNode.get(ufs.find(i)).addChild(children[i]);
+			}
+			else {
+				ICGTNode node =  new ICGTNode(NODE_TYPE.OTHER);
+				node.addChild(children[i]);
+				mapNode.put(ufs.find(i),node);
+
+			}
+
 		}
 
-		for (int i = 0; i < ufs.count(); ++i) {
-			nodes[i].isClosure(true);
-			_nodeFather.addChild(nodes[i]);
-			nodes[i].mergeGuassians();
+		Iterator<ICGTNode> itNode = mapNode.values().iterator();
+		while (itNode.hasNext()) {
+			ICGTNode node = itNode.next();
+			node.isClosure(true);
+			_nodeFather.addChild(node);
+			node.mergeGuassians();
 		}
 
 		return true;
 	}
 
 	public void addChild(ICGTNode node) {
+		_isChanged = true;
 		node.setNodeFather(this);
 		ICGTNode tmp = _nodeChild;
 		_nodeChild = node;
@@ -290,6 +304,12 @@ public class ICGTNode {
 			nodeIt = nodeIt.getNodeBrotherNext();
 		}
 		return count;
+	}
+
+
+	public void isChanged(boolean isChanged)
+	{
+		_isChanged = isChanged;
 	}
 
 
