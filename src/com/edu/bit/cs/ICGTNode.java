@@ -10,8 +10,7 @@ public class ICGTNode  implements Serializable {
 
 	private double ZERO = 0.000001;
 
-	private double thresholdMG = 6;
-	private double _thresholdGMM = 3;
+	private double _thresholdGMM = 10;
 
 	private int _numOfChildren;
 	private NODE_TYPE _nodeType;    //判断给节点是否为叶子结点
@@ -193,7 +192,7 @@ public class ICGTNode  implements Serializable {
 				double temp;
 				//if (children[i].isLeaf() == false) {                        //非叶子层利用GQFD公式计算距离
 					if (i != indexChanged.get(j)) {
-						temp = MathUtil.GQFDistance(children[i].getGMM(), gmmChanged);
+						temp = MathUtil.KLDivergence(children[i].getGMM(), gmmChanged);
 						System.out.println("GQFDistance" + temp);
 					} else {
 						continue;
@@ -277,6 +276,7 @@ public class ICGTNode  implements Serializable {
 		if (null != tmp) {
 			tmp.setNodeBrotherPre(node);
 		}
+		node.threshold(_thresholdGMM);
 		_numOfChildren ++;
 	}
 

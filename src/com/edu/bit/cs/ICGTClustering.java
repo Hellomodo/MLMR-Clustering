@@ -10,6 +10,7 @@ import javax.swing.JFrame;
 import org.apache.spark.api.java.JavaRDD;
 import org.apache.spark.mllib.linalg.DenseVector;
 import org.apache.spark.mllib.linalg.Vector;
+import scala.Array;
 
 public class ICGTClustering
 {
@@ -33,18 +34,71 @@ public class ICGTClustering
 		_nodeRoot = null;
 	}
 
-	public ICGTClustering(List<ICGTNode> listSubtrees)
+	public ICGTClustering(Iterator<ICGTNode> itNode)
 	{
-		_nodeRoot = new ICGTNode(ICGTNode.NODE_TYPE.ROOT);
-
-		_nodeRoot.threshold(5.85);
+		_nodesLeaf = new LinkedList<ICGTNode>();
+		_queueSamples = new LinkedList<Sample>();
+		_nodeRoot = null;
 		System.out.println("Final reclustering");
-		for(ICGTNode subtree : listSubtrees)
+
+		/*
+		_nodeRoot = new ICGTNode(ICGTNode.NODE_TYPE.ROOT);
+		while (itNode.hasNext())
 		{
+			ICGTNode subtree = itNode.next();
 			subtree.isChanged(true);
 			_nodeRoot.addChild(subtree);
+		}*/
+
+		while(itNode.hasNext())
+		{
+			ICGTNode nodeNew = itNode.next();
+			nodeNew.isChanged(true);
+			double minDistance = Double.MAX_VALUE;
+			ICGTNode leafNearest = null;
+
+			Iterator<ICGTNode> itNodeLeaf = _nodesLeaf.iterator();
+			while (itNodeLeaf.hasNext())
+			{
+				ICGTNode nodeLeaf = itNodeLeaf.next();
+				double distance = MathUtil.KLDivergence(nodeLeaf.getGMM(), nodeNew.getGMM());
+				if(distance < minDistance)
+				{
+					minDistance = distance;
+					leafNearest = nodeLeaf;
+				}
+			}
+
+			//说明是树的第一个结点
+			if(minDistance == Double.MAX_VALUE)
+			{
+				_nodeRoot = new ICGTNode(ICGTNode.NODE_TYPE.ROOT);
+
+				_nodeRoot.threshold(4);
+				_nodesLeaf.add(nodeNew);
+				_nodeRoot.addChild(nodeNew);
+				_nodeRoot.mergeGuassians();
+
+			}
+			//生成一个新的叶子结点
+			else
+			{
+				leafNearest.getNodeFather().addChild(nodeNew);
+				_nodeRoot = nodeNew.getNodeFather().update();
+				_nodesLeaf.add(nodeNew);
+
+			}
 		}
-		_nodeRoot = _nodeRoot.update();
+
+		ArrayList<ICGTNode> clusters = _nodeRoot.getNodesChildren();
+		for(int i = 0; i < clusters.size(); i++)
+		{
+			for(int j = 0; j < clusters.size(); j++)
+			{
+				System.out.println(i + ":" + j + "-->" + MathUtil.KLDivergence(clusters.get(i).getGMM(), clusters.get(j).getGMM()));
+			}
+		}
+
 	}
 
 	public List<ICGTNode> getFirstLayer()
@@ -280,7 +334,7 @@ public class ICGTClustering
 	{
 		LinkedList<Sample> listSamples = new LinkedList<Sample>();
 
-		Iterator<ICGTNode> iIt = this.getBestCluster().iterator();
+		Iterator<ICGTNode> iIt = this._nodeRoot.getNodesChildren().iterator();
 		int label = 0;
 		while(iIt.hasNext())
 		{

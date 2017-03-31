@@ -19,7 +19,7 @@ public class Main{
         String _urlMaster= "spark://10.108.6.128:7077";
         String _urlHDFS = "D:\\LsyTestProj\\ICGTClustering\\";
         System.setProperty("hadoop.home.dir", "D:\\ProjSoftware\\hadoop-2.7.3");
-        SparkConf  _sparkConf = new SparkConf().setAppName("GaussianMixture Example").setMaster("local[5]")
+        SparkConf  _sparkConf = new SparkConf().setAppName("GaussianMixture Example").setMaster("local[4]")
                 .setJars(new String[]{"D:\\LsyTestProj\\ICGTClustering\\out\\artifacts\\ICGTClustering_jar\\ICGTClustering.jar"});
         JavaSparkContext _javaSparkContext = new JavaSparkContext(_sparkConf);
 
@@ -42,7 +42,7 @@ public class Main{
 
         long start = System.currentTimeMillis();	// 记录起始时间
 
-        parsedData = parsedData.repartition(5);
+        parsedData = parsedData.repartition(4);
 
         List<ICGTNode> listSubtrees = parsedData.mapPartitions(
                 new FlatMapFunction<Iterator<Vector>,ICGTNode>()
@@ -59,7 +59,7 @@ public class Main{
         long end = System.currentTimeMillis();		// 记录结束时
         System.out.println(end-start);				// 相减得出运行时间
 
-        ICGTClustering finalClustering = new ICGTClustering(listSubtrees);
+        ICGTClustering finalClustering = new ICGTClustering(listSubtrees.iterator());
 
         finalClustering.showResults();
     }

@@ -15,12 +15,7 @@ public class MultivariateGaussian implements Serializable
 
     private long _numOfSamples;
 
-    //一些运算里用到的常量值
-    private static final double ZERO = 0.000001;
-    
-    private static final double G_CONNECT_THRESHOLD = 3.7;
-    private static final int DISTANCE_THRESHOLD = 0;
-    private static final double GMM_CONNECT_THRESHOLD = 2;
+    private static double _covInit = 0.1;
 
     public MultivariateGaussian(double[] mean, double[] cov, long numOfSamples)
     {
@@ -34,7 +29,7 @@ public class MultivariateGaussian implements Serializable
     {
         _mean = sample.variables();
         _cov = new double[_mean.length];
-        Arrays.fill(_cov,ZERO);
+        Arrays.fill(_cov,_covInit);
         _numOfSamples = 1;
     }
 

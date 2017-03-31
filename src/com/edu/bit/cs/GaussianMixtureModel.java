@@ -1,11 +1,6 @@
 package com.edu.bit.cs;
 
 import java.io.Serializable;
-import java.util.ArrayList;
-import java.util.List;
-
-import org.apache.spark.api.java.JavaRDD;
-import org.apache.spark.mllib.linalg.Vector;
 
 public class GaussianMixtureModel implements Serializable
 {
@@ -36,8 +31,8 @@ public class GaussianMixtureModel implements Serializable
 		{
 			_weights[i] = _gaussians[i].numOfSamples()/(double)_numOfSamples;
 		}
-
 	}
+
 	public long numOfSamples(int index)
 	{
 		return _gaussians[index].numOfSamples();
@@ -62,7 +57,6 @@ public class GaussianMixtureModel implements Serializable
 	{
 		return _gaussians[index];
 	}
-
 
 	public double[] weights()
 	{

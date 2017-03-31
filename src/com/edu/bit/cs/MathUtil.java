@@ -1,8 +1,5 @@
 package com.edu.bit.cs;
 
-import org.apache.spark.api.java.JavaRDD;
-import org.apache.spark.mllib.linalg.Vector;
-
 public class MathUtil
 {
 	//一些运算里用到的常量值
@@ -71,33 +68,35 @@ public class MathUtil
 	//KL散度距离计算公式
 	public static double KLDivergence (MultivariateGaussian gaussianA,MultivariateGaussian gaussianB)
 	{
-		double result = 0;
+		double resultAtoB = 0;
 		int dimension = gaussianA.dimension();
 		double[] meanA = gaussianA.mean();
 		double[] covA = gaussianA.cov();
 		double[] meanB = gaussianB.mean();
 		double[] covB = gaussianB.cov();
+
 		for (int i = 0; i < dimension; i++)
 		{
-			//原来代码为协方差，java中为协方差矩阵
 			if (covB[i] == 0)
 			{
 				covB[i] = ZERO;
 			}
 			if (covA[i] == 0)
 			{
-				result += covA[i] / covB[i]+ Math.pow((meanA[i] - meanB[i]), 2.0) / covB[i];
+				resultAtoB += covA[i] / covB[i]+ Math.pow((meanA[i] - meanB[i]), 2.0) / covB[i];
 			}
 			else
 			{
-				result += covA[i] / covB[i] + Math.pow((meanA[i] - meanB[i]), 2.0) / covB[i]
+				resultAtoB += covA[i] / covB[i] + Math.pow((meanA[i] - meanB[i]), 2.0) / covB[i]
 						- Math.log(Math.abs(covA[i] / covB[i]));
 			}
+
 		}
-		result -= dimension;
-		result *= 0.5;
-		double temp = 1 / (1 + result);
-		return temp;
+
+		resultAtoB -= dimension;
+		resultAtoB *= 0.5;
+
+		return resultAtoB;
 	}
 
 
@@ -129,6 +128,60 @@ public class MathUtil
 		result = result < 0 ? 0 : result;
 		return Math.sqrt(result);
 	}
+
+	//计算两个高斯混合模型的距离
+	public static  double KLDivergence(GaussianMixtureModel icgtGMMA,GaussianMixtureModel icgtGMMB)
+	{
+		int numOfGassiansA = icgtGMMA.numOfGaussians();
+		int numOfGassiansB = icgtGMMB.numOfGaussians();
+
+		MultivariateGaussian[] gaussianA = icgtGMMA.gaussians();
+		MultivariateGaussian[] gaussianB = icgtGMMB.gaussians();
+
+		double[] weightsA = icgtGMMA.weights();
+		double[] weightsB = icgtGMMB.weights();
+
+		double KLDiverAtoB = 0, KLDiverBtoA = 0;
+		for (int i = 0; i < numOfGassiansA; i++)
+		{
+			double tmpAtoA = 0, tmpAtoB = 0;
+
+			for (int j = 0; j < numOfGassiansA; j++)
+			{
+				double KLForGaussians = MathUtil.KLDivergence(gaussianA[i], gaussianA[j]);
+				tmpAtoA += weightsA[j] * Math.exp(-KLForGaussians);
+			}
+
+			for (int j = 0; j < numOfGassiansB; j++)
+			{
+				double KLForGaussians = MathUtil.KLDivergence(gaussianA[i], gaussianB[j]);
+				tmpAtoB += weightsB[j] * Math.exp(-KLForGaussians);
+			}
+			KLDiverAtoB += weightsA[i] + Math.log( tmpAtoA / tmpAtoB );
+		}
+
+		for (int i = 0; i < numOfGassiansB; i++)
+		{
+			double tmpBtoB = 0, tmpBtoA = 0;
+
+			for (int j = 0; j < numOfGassiansB; j++)
+			{
+				double KLForGaussians = MathUtil.KLDivergence(gaussianB[i], gaussianB[j]);
+				tmpBtoB += weightsB[j] * Math.exp(-KLForGaussians);
+			}
+
+			for (int j = 0; j < numOfGassiansA; j++)
+			{
+				double KLForGaussians = MathUtil.KLDivergence(gaussianB[i], gaussianA[j]);
+				tmpBtoA += weightsA[j] * Math.exp(-KLForGaussians);
+			}
+			KLDiverBtoA += weightsB[i] + Math.log( tmpBtoB / tmpBtoA );
+		}
+
+		double result = Math.min(KLDiverAtoB,KLDiverBtoA);
+		return result;
+	}
+
 
 	//计算两个高斯模型的欧式距离距离
 	public static double eulcideanDistance(MultivariateGaussian gaussianA,MultivariateGaussian gaussianB)
