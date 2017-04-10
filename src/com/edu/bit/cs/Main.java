@@ -19,21 +19,21 @@ public class Main{
         String _urlMaster= "spark://10.108.6.128:7077";
         String _urlHDFS = "D:\\LsyTestProj\\ICGTClustering\\";
         System.setProperty("hadoop.home.dir", "D:\\ProjSoftware\\hadoop-2.7.3");
-        SparkConf  _sparkConf = new SparkConf().setAppName("GaussianMixture Example").setMaster("local[4]")
+        SparkConf  _sparkConf = new SparkConf().setAppName("GaussianMixture Example").setMaster("local[2]")
                 .setJars(new String[]{"D:\\LsyTestProj\\ICGTClustering\\out\\artifacts\\ICGTClustering_jar\\ICGTClustering.jar"});
         JavaSparkContext _javaSparkContext = new JavaSparkContext(_sparkConf);
 
         // Load and parse data
-        String path = _urlHDFS + "Jain1.txt";
+        String path = _urlHDFS + "Pathbased2.txt";
         JavaRDD<String> data = _javaSparkContext.textFile(path);
         JavaRDD<Vector> parsedData = data.map(
                 new Function<String, Vector>()
                 {
                     public Vector call(String s)
                     {
-                        String[] sarray = s.trim().split("\t");
-                        double[] values = new double[sarray.length-1];
-                        for (int i = 0; i < sarray.length-1; i++)
+                        String[] sarray = s.trim().split(" ");
+                        double[] values = new double[sarray.length];
+                        for (int i = 0; i < sarray.length; i++)
                             values[i] = Double.parseDouble(sarray[i]);
                         return Vectors.dense(values);
                     }
@@ -42,7 +42,7 @@ public class Main{
 
         long start = System.currentTimeMillis();	// 记录起始时间
 
-        parsedData = parsedData.repartition(4);
+        parsedData = parsedData.repartition(2);
 
         List<ICGTNode> listSubtrees = parsedData.mapPartitions(
                 new FlatMapFunction<Iterator<Vector>,ICGTNode>()

@@ -4,13 +4,10 @@ import java.util.*;
 import java.util.ArrayList;
 import java.util.LinkedList;
 import java.util.List;
-import java.util.Queue;
 import javax.swing.JFrame;
 
-import org.apache.spark.api.java.JavaRDD;
-import org.apache.spark.mllib.linalg.DenseVector;
+
 import org.apache.spark.mllib.linalg.Vector;
-import scala.Array;
 
 public class ICGTClustering
 {
@@ -23,9 +20,7 @@ public class ICGTClustering
 
 	//一些运算里用到的常量值
 	private static final double ZERO = 0.000001;
-	private static final double G_CONNECT_THRESHOLD = 3.7;
-	private static final int DISTANCE_THRESHOLD = 2;
-	private static final double GMM_CONNECT_THRESHOLD = 2;
+	private static final double DISTANCE_THRESHOLD =0;
 
 	public ICGTClustering()
 	{
@@ -41,53 +36,53 @@ public class ICGTClustering
 		_nodeRoot = null;
 		System.out.println("Final reclustering");
 
-		/*
+
+
 		_nodeRoot = new ICGTNode(ICGTNode.NODE_TYPE.ROOT);
 		while (itNode.hasNext())
 		{
 			ICGTNode subtree = itNode.next();
 			subtree.isChanged(true);
 			_nodeRoot.addChild(subtree);
-		}*/
+		}
+		_nodeRoot.threshold(150);
+		//_nodeRoot = _nodeRoot.update();
 
-		while(itNode.hasNext())
+
+		while(true)
 		{
-			ICGTNode nodeNew = itNode.next();
-			nodeNew.isChanged(true);
+			ArrayList<ICGTNode> clusters = _nodeRoot.getNodesChildren();
 			double minDistance = Double.MAX_VALUE;
-			ICGTNode leafNearest = null;
-
-			Iterator<ICGTNode> itNodeLeaf = _nodesLeaf.iterator();
-			while (itNodeLeaf.hasNext())
+			ICGTNode nodeA = null, nodeB = null;
+			for(int i = 0; i < clusters.size(); i++)
 			{
-				ICGTNode nodeLeaf = itNodeLeaf.next();
-				double distance = MathUtil.KLDivergence(nodeLeaf.getGMM(), nodeNew.getGMM());
-				if(distance < minDistance)
+				for(int j = 0; j < clusters.size(); j++)
 				{
-					minDistance = distance;
-					leafNearest = nodeLeaf;
+
+					System.out.println(clusters.size() + ":（" + i + "," + j + ")");
+
+					double distance = MathUtil.GQFDistance(clusters.get(i).getGMM(), clusters.get(j).getGMM());
+					if(distance < minDistance && i != j)
+					{
+						minDistance = distance;
+						nodeA = clusters.get(i);
+						nodeB = clusters.get(j);
+					}
+					//System.out.println(i + ":" + j + "-->" + MathUtil.KLDivergence(clusters.get(i).getGMM(), clusters.get(j).getGMM()));
 				}
 			}
 
-			//说明是树的第一个结点
-			if(minDistance == Double.MAX_VALUE)
-			{
-				_nodeRoot = new ICGTNode(ICGTNode.NODE_TYPE.ROOT);
+			nodeA.seperateFromParents();
+			nodeB.seperateFromParents();
+			ICGTNode node = new ICGTNode(ICGTNode.NODE_TYPE.OTHER);
+			node.addChild(nodeA);
+			node.addChild(nodeB);
+			node.mergeGuassians();
+			_nodeRoot.addChild(node);
+			_nodeRoot.mergeGuassians();
 
-				_nodeRoot.threshold(4);
-				_nodesLeaf.add(nodeNew);
-				_nodeRoot.addChild(nodeNew);
-				_nodeRoot.mergeGuassians();
-
-			}
-			//生成一个新的叶子结点
-			else
-			{
-				leafNearest.getNodeFather().addChild(nodeNew);
-				_nodeRoot = nodeNew.getNodeFather().update();
-				_nodesLeaf.add(nodeNew);
-
-			}
+			if(_nodeRoot.numOfChild() == 4)
+				break;
 		}
 
 		ArrayList<ICGTNode> clusters = _nodeRoot.getNodesChildren();
@@ -95,7 +90,7 @@ public class ICGTClustering
 		{
 			for(int j = 0; j < clusters.size(); j++)
 			{
-				System.out.println(i + ":" + j + "-->" + MathUtil.KLDivergence(clusters.get(i).getGMM(), clusters.get(j).getGMM()));
+				System.out.println(i + ":" + j + "-->" + MathUtil.GQFDistance(clusters.get(i).getGMM(), clusters.get(j).getGMM()));
 			}
 		}
 
@@ -142,7 +137,7 @@ public class ICGTClustering
 			while (itNode.hasNext())
 			{
 				ICGTNode nodeTmp = itNode.next();
-				double distance = MathUtil.eulcideanDistance( gmmNew.gaussian(0), nodeTmp.getGMM().gaussian(0));
+				double distance = MathUtil.KLDivergence( gmmNew, nodeTmp.getGMM());
 				if(distance < minDistance)
 				{
 					minDistance = distance;
@@ -334,11 +329,11 @@ public class ICGTClustering
 	{
 		LinkedList<Sample> listSamples = new LinkedList<Sample>();
 
-		Iterator<ICGTNode> iIt = this._nodeRoot.getNodesChildren().iterator();
-		int label = 0;
-		while(iIt.hasNext())
+		ArrayList<ICGTNode> clusters = _nodeRoot.getNodesChildren();
+		;
+		for(int label = 0; label < clusters.size(); label ++)
 		{
-			getClusteredSamples(listSamples, iIt.next(), label++);
+			getClusteredSamples(listSamples, clusters.get(label), label);
 		}
 
 		final JFrame frame = new JFrame("Point Data Rendering");

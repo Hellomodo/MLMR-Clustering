@@ -41,7 +41,8 @@ public class ICGTPanel extends JPanel
 			g.setColor(_tabColor.get( sample.getLabel() ));
 			Point point = coordTransform( sample.variable(0), sample.variable(1));
 			g.fillOval((int)point.getX(),(int)point.getY(), _lengthP, _lengthP);
-			g.drawChars(new String(sample.getLabel() + "  ").toCharArray(),0,3,(int)point.getX(),(int)point.getY());
+			g.drawString("(" + sample.variable(0)+ "," + sample.variable(1) +","+ sample.getLabel() + ")",(int)point.getX(),(int)point.getY() );
+			//g.drawChars(new String(sample.getLabel() + "  " + "").toCharArray(),0,3,(int)point.getX(),(int)point.getY());
 		}
 	}
 

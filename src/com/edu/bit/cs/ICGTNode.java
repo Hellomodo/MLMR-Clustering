@@ -10,7 +10,8 @@ public class ICGTNode  implements Serializable {
 
 	private double ZERO = 0.000001;
 
-	private double _thresholdGMM = 10;
+	private double _thresholdGMM = 0;
+	private double _thresholdMG = 2;
 
 	private int _numOfChildren;
 	private NODE_TYPE _nodeType;    //判断给节点是否为叶子结点
@@ -190,10 +191,9 @@ public class ICGTNode  implements Serializable {
 			MultivariateGaussian gaussianChanged = children[indexChanged.get(j)].getGMM().gaussian(0);
 			for (int i = 0; i < num; ++i) {                          //构图
 				double temp;
-				//if (children[i].isLeaf() == false) {                        //非叶子层利用GQFD公式计算距离
+				if (children[i].isLeaf() == false) {                      //非叶子层利用GQFD公式计算距离
 					if (i != indexChanged.get(j)) {
-						temp = MathUtil.KLDivergence(children[i].getGMM(), gmmChanged);
-						System.out.println("GQFDistance" + temp);
+						temp = MathUtil.GQFDistance(children[i].getGMM(), gmmChanged);
 					} else {
 						continue;
 					}
@@ -201,8 +201,8 @@ public class ICGTNode  implements Serializable {
 					if (temp < _thresholdGMM) {
 						ufs.union(i,indexChanged.get(j));
 					}
-			//	}
-				/*else{                                        //叶子层利用欧式距离公式计算距离
+				}
+				else{                                        //叶子层利用欧式距离公式计算距离
 
 					if (i != indexChanged.get(j)) {
 						temp = MathUtil.eulcideanDistance(children[i].getGMM().gaussian(0),gaussianChanged);
@@ -210,10 +210,10 @@ public class ICGTNode  implements Serializable {
 						continue;
 					}
 
-					if (temp < thresholdMG) {
+					if (temp < _thresholdMG) {
 						ufs.union(i,indexChanged.get(j));
 					}
-				}*/
+				}
 			}
 		}
 

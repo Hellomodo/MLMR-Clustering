@@ -95,8 +95,8 @@ public class MathUtil
 
 		resultAtoB -= dimension;
 		resultAtoB *= 0.5;
-
-		return resultAtoB;
+		//return resultAtoB;
+		return Math.atan(resultAtoB) * 2 / Math.PI;
 	}
 
 
@@ -120,7 +120,7 @@ public class MathUtil
 		{
 			for (int j = 0; j < numOfGaussians; j++)
 			{
-				double Aij = MathUtil.KLDivergence(gaussians[i], gaussians[j]);
+				double Aij = Math.min( MathUtil.KLDivergence(gaussians[i], gaussians[j]), MathUtil.KLDivergence(gaussians[j], gaussians[i]));
 				result += weights[i] * Aij * weights[j];
 			}
 		}
@@ -128,6 +128,7 @@ public class MathUtil
 		result = result < 0 ? 0 : result;
 		return Math.sqrt(result);
 	}
+
 
 	//计算两个高斯混合模型的距离
 	public static  double KLDivergence(GaussianMixtureModel icgtGMMA,GaussianMixtureModel icgtGMMB)
@@ -179,8 +180,10 @@ public class MathUtil
 		}
 
 		double result = Math.min(KLDiverAtoB,KLDiverBtoA);
-		return result;
+		return (Math.atan(result) * 2 / Math.PI - 0.5) * 2;
 	}
+
+
 
 
 	//计算两个高斯模型的欧式距离距离
