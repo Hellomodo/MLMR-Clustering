@@ -11,7 +11,7 @@ public class ICGTNode  implements Serializable {
 	private double ZERO = 0.000001;
 
 	private double _thresholdGMM = 0;
-	private double _thresholdMG = 2;
+	private double _thresholdMG = 1.7;
 
 	private int _numOfChildren;
 	private NODE_TYPE _nodeType;    //判断给节点是否为叶子结点
@@ -343,6 +343,7 @@ public class ICGTNode  implements Serializable {
 
 	public void setGMM(GaussianMixtureModel gmm)
 	{
+		_isChanged = true;
 		_gmm = gmm;
 	};
 

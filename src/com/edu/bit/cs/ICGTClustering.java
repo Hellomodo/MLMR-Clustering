@@ -1,13 +1,15 @@
 package com.edu.bit.cs;
 
+import org.apache.commons.math3.linear.Array2DRowRealMatrix;
+import org.apache.commons.math3.linear.RealMatrix;
+import org.apache.spark.mllib.linalg.*;
+
 import java.util.*;
 import java.util.ArrayList;
 import java.util.LinkedList;
 import java.util.List;
+import java.util.Vector;
 import javax.swing.JFrame;
-
-
-import org.apache.spark.mllib.linalg.Vector;
 
 public class ICGTClustering
 {
@@ -20,7 +22,7 @@ public class ICGTClustering
 
 	//一些运算里用到的常量值
 	private static final double ZERO = 0.000001;
-	private static final double DISTANCE_THRESHOLD =0;
+	private static final double DISTANCE_THRESHOLD = 0; //20000
 
 	public ICGTClustering()
 	{
@@ -34,9 +36,8 @@ public class ICGTClustering
 		_nodesLeaf = new LinkedList<ICGTNode>();
 		_queueSamples = new LinkedList<Sample>();
 		_nodeRoot = null;
+
 		System.out.println("Final reclustering");
-
-
 
 		_nodeRoot = new ICGTNode(ICGTNode.NODE_TYPE.ROOT);
 		while (itNode.hasNext())
@@ -45,52 +46,98 @@ public class ICGTClustering
 			subtree.isChanged(true);
 			_nodeRoot.addChild(subtree);
 		}
-		_nodeRoot.threshold(150);
-		//_nodeRoot = _nodeRoot.update();
 
+		ArrayList<ICGTNode> clusters = _nodeRoot.getNodesChildren();
+
+		Vector< Vector<Double> > distance2d = new Vector< Vector<Double> >();
+		for(int i = 0; i < clusters.size(); i++)
+		{
+			Vector<Double> distance1d = new Vector<Double>();
+			for(int j = 0; j < clusters.size(); j++)
+			{
+				Double distance = MathUtil.KLDivergence(clusters.get(i).getGMM(), clusters.get(j).getGMM());
+				distance1d.add(distance);
+			}
+			distance2d.add(distance1d);
+		}
 
 		while(true)
 		{
-			ArrayList<ICGTNode> clusters = _nodeRoot.getNodesChildren();
+
+			if(_nodeRoot.numOfChild() == 2)
+				break;
+
+			clusters = _nodeRoot.getNodesChildren();
 			double minDistance = Double.MAX_VALUE;
-			ICGTNode nodeA = null, nodeB = null;
+			int iNode = -1, jNode = -1;
+
 			for(int i = 0; i < clusters.size(); i++)
 			{
+				Vector<Double> distance1d =  distance2d.get(i);
 				for(int j = 0; j < clusters.size(); j++)
 				{
-
-					System.out.println(clusters.size() + ":（" + i + "," + j + ")");
-
-					double distance = MathUtil.GQFDistance(clusters.get(i).getGMM(), clusters.get(j).getGMM());
+					double distance = distance1d.get(j);
 					if(distance < minDistance && i != j)
 					{
 						minDistance = distance;
-						nodeA = clusters.get(i);
-						nodeB = clusters.get(j);
+						iNode = i;
+						jNode = j;
 					}
-					//System.out.println(i + ":" + j + "-->" + MathUtil.KLDivergence(clusters.get(i).getGMM(), clusters.get(j).getGMM()));
 				}
 			}
 
-			nodeA.seperateFromParents();
-			nodeB.seperateFromParents();
+			clusters.get(iNode).seperateFromParents();
+			clusters.get(jNode).seperateFromParents();
 			ICGTNode node = new ICGTNode(ICGTNode.NODE_TYPE.OTHER);
-			node.addChild(nodeA);
-			node.addChild(nodeB);
+			node.addChild(clusters.get(iNode));
+			node.addChild(clusters.get(jNode));
 			node.mergeGuassians();
 			_nodeRoot.addChild(node);
 			_nodeRoot.mergeGuassians();
 
-			if(_nodeRoot.numOfChild() == 4)
-				break;
+			if(iNode > jNode)
+			{
+				distance2d.remove(iNode);
+				distance2d.remove(jNode);
+				for(int i = 0; i < distance2d.size(); i++)
+				{
+					Vector<Double> distance1d =  distance2d.get(i);
+					distance1d.remove(iNode);
+					distance1d.remove(jNode);
+
+				}
+			}else{
+				distance2d.remove(jNode);
+				distance2d.remove(iNode);
+				for(int i = 0; i < distance2d.size(); i++)
+				{
+					Vector<Double> distance1d =  distance2d.get(i);
+					distance1d.remove(jNode);
+					distance1d.remove(iNode);
+				}
+			}
+
+			java.util.Vector distance1d = new java.util.Vector<Double>();
+			clusters = _nodeRoot.getNodesChildren();
+			for(int i = 0; i < clusters.size(); i++)
+			{
+				Double distance = MathUtil.KLDivergence(clusters.get(0).getGMM(), clusters.get(i).getGMM());
+				distance1d.add(distance);
+				if(i != 0)
+				{
+					distance2d.get(i - 1).add(0,MathUtil.KLDivergence(clusters.get(i).getGMM(), clusters.get(0).getGMM()));
+				}
+			}
+			distance2d.add(0,distance1d);
+
 		}
 
-		ArrayList<ICGTNode> clusters = _nodeRoot.getNodesChildren();
+		clusters = _nodeRoot.getNodesChildren();
 		for(int i = 0; i < clusters.size(); i++)
 		{
 			for(int j = 0; j < clusters.size(); j++)
 			{
-				System.out.println(i + ":" + j + "-->" + MathUtil.GQFDistance(clusters.get(i).getGMM(), clusters.get(j).getGMM()));
+				System.out.println(i + ":" + j + "-->" + MathUtil.KLDivergence(clusters.get(i).getGMM(), clusters.get(j).getGMM()));
 			}
 		}
 
@@ -112,7 +159,7 @@ public class ICGTClustering
 
 
 	//接受一个新的RDD，用于增量聚类（先把数据转化为gmm,然后再把每个高斯模型插入高斯混合模型树里，再进行树的更新）
-	public ICGTClustering run(Iterator<Vector> samples)
+	public ICGTClustering run(Iterator<org.apache.spark.mllib.linalg.Vector> samples)
 	{
 		if(samples == null)
 		{
@@ -137,14 +184,14 @@ public class ICGTClustering
 			while (itNode.hasNext())
 			{
 				ICGTNode nodeTmp = itNode.next();
-				double distance = MathUtil.KLDivergence( gmmNew, nodeTmp.getGMM());
+				double distance = MathUtil.eulcideanDistance( gmmNew.gaussian(0), nodeTmp.getGMM().gaussian(0));
 				if(distance < minDistance)
 				{
 					minDistance = distance;
 					leafNearest = nodeTmp;
 				}
 			}
-            System.out.println("找到最近的叶子节点");
+
 			//说明是树的第一个结点
 			if(minDistance == Double.MAX_VALUE)
 			{
@@ -158,18 +205,14 @@ public class ICGTClustering
 				_nodesLeaf.add(leafNew);
 				_nodeRoot.addChild(leafNew);
 				_nodeRoot.mergeGuassians();
-
-				//updateMuSigma(newLeaf);//更新树结点的均值和协方差矩阵
-				//modify1(root);
 			}
 			//小于阈值，则将信息导入
 			else if(minDistance < DISTANCE_THRESHOLD)
 			{
 				leafNearest.setGMM(new GaussianMixtureModel(MathUtil.mergeGaussians(leafNearest.getGMM().gaussian(0),gmmNew.gaussian(0))));
 				leafNearest.addSample(sample);
-				_nodeRoot.mergeGuassians();
 				_nodeRoot = leafNearest.getNodeFather().update();
-				//updateMuSigma(minLeaf);//更新树结点的均值和协方差矩阵
+
 			}
 			//生成一个新的叶子结点
 			else
@@ -182,7 +225,7 @@ public class ICGTClustering
 				leafNearest.getNodeFather().addChild(leafNew);
 				_nodeRoot = leafNew.getNodeFather().update();
  				_nodesLeaf.add(leafNew);
-				//updateMuSigma(newLeaf);//更新树结点的均值和协方差矩阵
+
 			}
             System.out.println("插入叶子节点");
 		}

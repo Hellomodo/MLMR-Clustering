@@ -5,13 +5,6 @@ public class MathUtil
 	//一些运算里用到的常量值
 	private static final double ZERO = 0.000001;
 
-/*
-	public static ICGTGaussianMixtureModel getGMMByEM(JavaRDD<Vector> samples, int k)
-	{
-		return new ICGTGaussianMixtureModel(samples, k);
-	}*/
-
-
 	//合并两个高斯模型
 	public static MultivariateGaussian mergeGaussians(MultivariateGaussian gaussianA ,MultivariateGaussian gaussianB)
 	{
@@ -44,27 +37,6 @@ public class MathUtil
 		return new MultivariateGaussian(meanMerged, covMerged, numOfSamples);
 	}
 
-	public static void warshall(boolean[][] mat)
-	{
-		int num = mat.length;
-		for (int i = 0; i < num; ++i)
-		{
-			for (int j = 0; j < num; ++j)
-			{
-				if (mat[i][j])
-				{
-					for (int k = 0; k < num; ++k)
-					{
-						if (mat[k][i])
-						{
-							mat[k][j] = true;
-						}
-					}
-				}
-			}
-		}
-	}
-
 	//KL散度距离计算公式
 	public static double KLDivergence (MultivariateGaussian gaussianA,MultivariateGaussian gaussianB)
 	{
@@ -95,8 +67,9 @@ public class MathUtil
 
 		resultAtoB -= dimension;
 		resultAtoB *= 0.5;
-		//return resultAtoB;
-		return Math.atan(resultAtoB) * 2 / Math.PI;
+		//return 1 / (resultAtoB + 1);
+		return resultAtoB;
+		//return Math.atan(resultAtoB) * 2 / Math.PI;
 	}
 
 
@@ -109,7 +82,11 @@ public class MathUtil
 
 		double[] weights = new double[numOfGaussians];
 		System.arraycopy(icgtGMMA.weights(), 0, weights, 0, numOfGassiansA);
-		System.arraycopy(icgtGMMB.weights(), 0,weights, numOfGassiansA, numOfGassiansB);
+		//System.arraycopy(icgtGMMB.weights(), 0, weights, numOfGassiansA, numOfGassiansB);
+		for(int i = 0; i < numOfGassiansB; i ++)
+		{
+			weights[i + numOfGassiansA] = -icgtGMMB.weights()[i];
+		}
 
 		MultivariateGaussian[] gaussians = new MultivariateGaussian[numOfGaussians];
 		System.arraycopy(icgtGMMA.gaussians(), 0, gaussians, 0, numOfGassiansA);
@@ -120,7 +97,7 @@ public class MathUtil
 		{
 			for (int j = 0; j < numOfGaussians; j++)
 			{
-				double Aij = Math.min( MathUtil.KLDivergence(gaussians[i], gaussians[j]), MathUtil.KLDivergence(gaussians[j], gaussians[i]));
+				double Aij = Math.max( MathUtil.KLDivergence(gaussians[i], gaussians[j]), MathUtil.KLDivergence(gaussians[j], gaussians[i]));
 				result += weights[i] * Aij * weights[j];
 			}
 		}
