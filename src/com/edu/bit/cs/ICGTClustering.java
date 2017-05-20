@@ -22,7 +22,7 @@ public class ICGTClustering
 
 	//一些运算里用到的常量值
 	private static final double ZERO = 0.000001;
-	private static final double DISTANCE_THRESHOLD = 0; //20000
+	private static final double _thresholdED = 0.6; //20000
 
 	public ICGTClustering()
 	{
@@ -30,6 +30,7 @@ public class ICGTClustering
 		_queueSamples = new LinkedList<Sample>();
 		_nodeRoot = null;
 	}
+
 
 	public ICGTClustering(Iterator<ICGTNode> itNode)
 	{
@@ -64,7 +65,7 @@ public class ICGTClustering
 		while(true)
 		{
 
-			if(_nodeRoot.numOfChild() == 2)
+			if(_nodeRoot.numOfChild() == 2 )
 				break;
 
 			clusters = _nodeRoot.getNodesChildren();
@@ -131,7 +132,7 @@ public class ICGTClustering
 			distance2d.add(0,distance1d);
 
 		}
-
+/*
 		clusters = _nodeRoot.getNodesChildren();
 		for(int i = 0; i < clusters.size(); i++)
 		{
@@ -140,7 +141,7 @@ public class ICGTClustering
 				System.out.println(i + ":" + j + "-->" + MathUtil.KLDivergence(clusters.get(i).getGMM(), clusters.get(j).getGMM()));
 			}
 		}
-
+*/
 	}
 
 	public List<ICGTNode> getFirstLayer()
@@ -157,26 +158,23 @@ public class ICGTClustering
 		return listNodes;
 	}
 
-
-	//接受一个新的RDD，用于增量聚类（先把数据转化为gmm,然后再把每个高斯模型插入高斯混合模型树里，再进行树的更新）
-	public ICGTClustering run(Iterator<org.apache.spark.mllib.linalg.Vector> samples)
+	public ICGTClustering run(Iterator<Sample> itSample)
 	{
-		if(samples == null)
+		if(itSample == null)
 		{
 			return this;
 		}
 
 		long count = 0;
-		while(samples.hasNext())
+		while(itSample.hasNext())
 		{
             count ++;
 
-			Sample sample = new Sample(samples.next());
+			Sample sample = itSample.next();
 			_queueSamples.offer(sample);
 
 			GaussianMixtureModel gmmNew = new GaussianMixtureModel(new MultivariateGaussian(sample));
 
-            System.out.println("寻找最近的叶子节点: "+ count + "/" );
 			//寻找最近叶子节点
 			double minDistance = Double.MAX_VALUE;
 			ICGTNode leafNearest = null;
@@ -207,7 +205,7 @@ public class ICGTClustering
 				_nodeRoot.mergeGuassians();
 			}
 			//小于阈值，则将信息导入
-			else if(minDistance < DISTANCE_THRESHOLD)
+			else if(minDistance < _thresholdED)
 			{
 				leafNearest.setGMM(new GaussianMixtureModel(MathUtil.mergeGaussians(leafNearest.getGMM().gaussian(0),gmmNew.gaussian(0))));
 				leafNearest.addSample(sample);
@@ -227,7 +225,6 @@ public class ICGTClustering
  				_nodesLeaf.add(leafNew);
 
 			}
-            System.out.println("插入叶子节点");
 		}
 		return this;
 	}
@@ -346,7 +343,7 @@ public class ICGTClustering
 		return MathUtil.GQFDistance(nodeA.getGMM(), nodB.getGMM());
 	}
 
-	public void getClusteredSamples(LinkedList<Sample> listSamples, ICGTNode node, int label)
+	public void getClusteredSamples(LinkedList<Sample> listSamples, ICGTNode node, int pridict)
 	{
 		if(node.isLeaf())
 		{
@@ -354,7 +351,7 @@ public class ICGTClustering
 			while(it.hasNext())
 			{
                 Sample sample = (Sample) it.next();
-                sample.setLabel(label);
+                sample.setPridict(pridict);
 				listSamples.offer(sample);
 			}
 			return ;
@@ -363,7 +360,7 @@ public class ICGTClustering
 		ICGTNode children = node.getNodeChild();
 		while(children != null)
 		{
-			getClusteredSamples(listSamples, children, label);
+			getClusteredSamples(listSamples, children, pridict);
 			children = children.getNodeBrotherNext();
 		}
 	}
@@ -374,9 +371,9 @@ public class ICGTClustering
 
 		ArrayList<ICGTNode> clusters = _nodeRoot.getNodesChildren();
 		;
-		for(int label = 0; label < clusters.size(); label ++)
+		for(int pridict = 1; pridict <= clusters.size(); pridict ++)
 		{
-			getClusteredSamples(listSamples, clusters.get(label), label);
+			getClusteredSamples(listSamples, clusters.get(pridict-1), pridict);
 		}
 
 		final JFrame frame = new JFrame("Point Data Rendering");
@@ -387,5 +384,19 @@ public class ICGTClustering
 		frame.setVisible(true);
 		frame.repaint();
 		frame.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
+	}
+
+	public List<Sample> getResults()
+	{
+		LinkedList<Sample> listSamples = new LinkedList<Sample>();
+
+		ArrayList<ICGTNode> clusters = _nodeRoot.getNodesChildren();
+		;
+		for(int pridict = 1; pridict <= clusters.size(); pridict ++)
+		{
+			getClusteredSamples(listSamples, clusters.get(pridict-1), pridict);
+		}
+
+		return listSamples;
 	}
 }

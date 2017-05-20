@@ -7,15 +7,37 @@ import java.util.List;
 public class ICGTPanel extends JPanel
 {
 	List<Sample> _sample;
-	Map<Integer,Color> _tabColor;
+	Map<Integer,Color> _mapColor;
 
+	Color[] _arrayColor = {new Color(255,255,255),
+							new Color(255,0,0),
+							new Color(0,0,255),
+							new Color(0,255,0),
+							new Color(0,0,0),
+							new Color(255,0,255),
+							new Color(0,255,255),
+							//new Color(255,255,0),
+							new Color(125,125,0),
+							new Color(125,0,125),
+							new Color(0,125,125),
+							new Color(125,0,0),
+							new Color(0,125,0),
+							new Color(0,0,125),
+							new Color(125,125,125),
+							new Color(0,125,250),
+							new Color(0,250,125),
+							new Color(125,0,250),
+							new Color(250,0,125),
+							new Color(125,250,0),
+							new Color(250,125,0),
+							};
 	private int margin = 20;
 	private int _lengthX = 1200;
 	private int _lengthY = 800;
 	private double _minX, _maxX;
 	private double _minY, _maxY;
 	private double _spanX, _spanY;
-	private int _lengthP = 5;
+	private int _lengthP = 10;
 
 	public Point coordTransform(double x, double y)
 	{
@@ -33,23 +55,23 @@ public class ICGTPanel extends JPanel
 		while(itSample.hasNext())
 		{
 			Sample sample = (Sample)itSample.next();
-			if(! _tabColor.containsKey(sample.getLabel()))
+			if(! _mapColor.containsKey(sample.getPridict()))
 			{
-				_tabColor.put( sample.getLabel(), new Color((int)(Math.random()*256),(int)(Math.random()*256),(int)(Math.random()*256)) );
-
+				_mapColor.put( sample.getPridict(), new Color((int)(Math.random()*256),(int)(Math.random()*256),(int)(Math.random()*256)) );
 			}
-			g.setColor(_tabColor.get( sample.getLabel() ));
+			//g.setColor(_mapColor.get( sample.getPridict() ));
+			g.setColor(_arrayColor[sample.getPridict()]);
 			Point point = coordTransform( sample.variable(0), sample.variable(1));
-			g.fillOval((int)point.getX(),(int)point.getY(), _lengthP, _lengthP);
-			//g.drawString("(" + sample.variable(0)+ "," + sample.variable(1) +","+ sample.getLabel() + ")",(int)point.getX(),(int)point.getY() );
-			//g.drawChars(new String(sample.getLabel() + "  " + "").toCharArray(),0,3,(int)point.getX(),(int)point.getY());
+			//g.fillOval((int)point.getX(),(int)point.getY(), _lengthP, _lengthP);
+			//g.drawString("(" + sample.variable(0)+ "," + sample.variable(1) +","+ sample.getPridict() + ")",(int)point.getX(),(int)point.getY() );
+			g.drawChars(new String(sample.getPridict() + "  " + "").toCharArray(),0,3,(int)point.getX(),(int)point.getY());
 		}
 	}
 
 	public void displayClusters(List<Sample> sample)
 	{
 		_sample = sample;
-		_tabColor = new HashMap<Integer, Color>();
+		_mapColor = new HashMap<Integer, Color>();
 
 		_minX = Double.MAX_VALUE;
 		_maxX = 0;

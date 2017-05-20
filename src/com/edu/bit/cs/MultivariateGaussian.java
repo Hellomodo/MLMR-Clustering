@@ -15,7 +15,7 @@ public class MultivariateGaussian implements Serializable
 
     private long _numOfSamples;
 
-    private static double _covInit = 0.5;
+    private static double _covInit = 0.1;
 
     public MultivariateGaussian(double[] mean, double[] cov, long numOfSamples)
     {

@@ -1,10 +1,5 @@
 package com.edu.bit.cs;
-
-import com.sun.xml.bind.v2.model.core.ID;
-import com.sun.xml.internal.ws.developer.Serialization;
-import org.apache.spark.mllib.linalg.Vector;
-
-import java.io.Serializable;
+;import java.io.Serializable;
 
 /**
  * Created by 林 on 2017/3/3.
@@ -15,9 +10,17 @@ public class Sample implements Serializable
 
     private int _label;
 
-    public Sample(Vector variables)
+    private int _pridict;
+
+    public Sample(double[] variables)
     {
-        _variables = variables.toArray();
+        _variables = variables;
+    }
+
+    public Sample(double[] variables,int label)
+    {
+        _variables = variables;
+        _label = label;
     }
 
     public void setLabel(int label)
@@ -28,6 +31,16 @@ public class Sample implements Serializable
     public int getLabel()
     {
         return _label;
+    }
+
+    public void setPridict(int pridict)
+    {
+        _pridict = pridict;
+    }
+
+    public int getPridict()
+    {
+        return _pridict;
     }
 
     public double variable(int index)
